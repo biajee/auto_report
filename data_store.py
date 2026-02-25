@@ -23,6 +23,14 @@ class Entry:
     last_capture_time: Optional[str] = None
     notes: str = ""
 
+    # PowerPoint destination (all optional)
+    pptx_file: Optional[str] = None
+    pptx_slide: int = 1
+    pptx_left: float = 0.5
+    pptx_top: float = 0.5
+    pptx_width: float = 9.0
+    pptx_height: float = 6.5
+
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
@@ -54,6 +62,14 @@ class Entry:
 
     def display_capture_time(self) -> str:
         return self.last_capture_time or "Never"
+
+    def has_ppt_dest(self) -> bool:
+        return bool(self.pptx_file)
+
+    def display_ppt_dest(self) -> str:
+        if not self.pptx_file:
+            return "—"
+        return f"{Path(self.pptx_file).name}  sl.{self.pptx_slide}"
 
 
 class DataStore:
