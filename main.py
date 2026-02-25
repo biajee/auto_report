@@ -349,14 +349,16 @@ class EntryDialog(tk.Toplevel):
                 init_height=self._f(self._pptx_height_var, 6.5),
             )
             self.wait_window(dlg)
-            if dlg.result is not None:
-                l, t, w, h = dlg.result
+            if dlg.result is not None and self.winfo_exists():
+                sn, l, t, w, h = dlg.result
+                self._pptx_slide_var.set(str(sn))
                 self._pptx_left_var.set(f"{l:.2f}")
                 self._pptx_top_var.set(f"{t:.2f}")
                 self._pptx_width_var.set(f"{w:.2f}")
                 self._pptx_height_var.set(f"{h:.2f}")
         finally:
-            self.grab_set()
+            if self.winfo_exists():
+                self.grab_set()
 
     # ------------------------------------------------------------------
     # Submit
@@ -640,13 +642,18 @@ class RangePickerDialog(tk.Toplevel):
 
 class PPTPosPickerDialog(tk.Toplevel):
     """
-    Opens the PPTX in a visible PowerPoint window, inserts an orange
-    placeholder rectangle on the target slide, and polls its position
-    every 400 ms.  When the user clicks Confirm the (left, top, width,
-    height) tuple (in inches) is stored in self.result.
+    Opens the PPTX visibly, drops an orange placeholder rectangle on the
+    target slide, and polls its position every 400 ms.
+
+    The user can navigate between slides with ◀ / ▶ while PowerPoint is
+    open; the placeholder moves to the newly selected slide keeping its
+    current size/position.
+
+    self.result = (slide_num, left, top, width, height) in inches, or
+    None if cancelled.
     """
 
-    _PTS = 72.0  # points per inch (PowerPoint uses points internally)
+    _PTS = 72.0   # PowerPoint uses points; 1 inch = 72 pts
 
     def __init__(
         self,
@@ -664,24 +671,26 @@ class PPTPosPickerDialog(tk.Toplevel):
         self.transient(parent)
         self.attributes("-topmost", True)
 
-        self.result: Optional[tuple] = None   # (left, top, width, height) inches
+        self.result: Optional[tuple] = None  # (slide, l, t, w, h)
 
-        self._pptx_path = pptx_path
+        self._pptx_path   = pptx_path
         self._slide_number = slide_number
-        self._init = (init_left, init_top, init_width, init_height)
-        self._last: tuple = (init_left, init_top, init_width, init_height)
-        self._stop = threading.Event()
-        self._q: _queue.Queue = _queue.Queue()
+        self._init        = (init_left, init_top, init_width, init_height)
+        self._last_pos    = (init_left, init_top, init_width, init_height)
+        self._cur_slide   = slide_number   # tracks where placeholder lives
+        self._total       = 0              # filled in when PPT opens
+
+        self._stop  = threading.Event()
+        self._q     = _queue.Queue()   # worker → UI
+        self._cmdq  = _queue.Queue()   # UI → worker  (goto commands)
         self._poll_id: Optional[str] = None
 
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._cancel)
 
-        # Top-right corner so it floats above PowerPoint
         self.update_idletasks()
         sw = self.winfo_screenwidth()
-        w = self.winfo_reqwidth()
-        self.geometry(f"+{sw - w - 30}+30")
+        self.geometry(f"+{sw - self.winfo_reqwidth() - 30}+30")
 
         threading.Thread(target=self._worker, daemon=True).start()
         self._drain()
@@ -696,38 +705,61 @@ class PPTPosPickerDialog(tk.Toplevel):
 
         ttk.Label(
             frm,
-            text="Move and resize the orange rectangle\nin PowerPoint, then click Confirm.",
+            text="Move and resize the orange rectangle in PowerPoint.\n"
+                 "Use ◀ ▶ to switch slides, then click Confirm.",
             justify="left",
             font=("TkDefaultFont", 9),
         ).pack(anchor="w", pady=(0, 10))
 
-        # Live position display
+        # ── Slide navigation ──────────────────────────────────────────
+        nav = ttk.Frame(frm)
+        nav.pack(fill="x", pady=(0, 8))
+
+        ttk.Label(nav, text="Slide:").pack(side="left")
+        self._prev_btn = ttk.Button(
+            nav, text="◀", width=3, state="disabled", command=self._prev
+        )
+        self._prev_btn.pack(side="left", padx=(6, 2))
+
+        self._slide_lbl_var = tk.StringVar(value="…")
+        ttk.Label(
+            nav, textvariable=self._slide_lbl_var,
+            font=("TkDefaultFont", 9, "bold"), width=14, anchor="center",
+        ).pack(side="left")
+
+        self._next_btn = ttk.Button(
+            nav, text="▶", width=3, state="disabled", command=self._next
+        )
+        self._next_btn.pack(side="left", padx=(2, 0))
+
+        # ── Live position readout ─────────────────────────────────────
         grid = ttk.Frame(frm, relief="sunken", padding=10)
         grid.pack(fill="x", pady=(0, 12))
 
-        lbl_font = ("Consolas", 10)
-        val_font = ("Consolas", 11, "bold")
+        lbl_f = ("Consolas", 10)
+        val_f = ("Consolas", 11, "bold")
 
         self._left_var   = tk.StringVar(value="—")
         self._top_var    = tk.StringVar(value="—")
         self._width_var  = tk.StringVar(value="—")
         self._height_var = tk.StringVar(value="—")
 
-        for row, (label, var) in enumerate([
+        for i, (lbl, var) in enumerate([
             ("Left:",   self._left_var),
             ("Top:",    self._top_var),
             ("Width:",  self._width_var),
             ("Height:", self._height_var),
         ]):
-            ttk.Label(grid, text=label, font=lbl_font, width=8, anchor="e").grid(
-                row=row // 2, column=(row % 2) * 2, sticky="e", padx=(4, 2), pady=3
+            r, c = divmod(i, 2)
+            ttk.Label(grid, text=lbl, font=lbl_f, width=8, anchor="e").grid(
+                row=r, column=c * 2, sticky="e", padx=(4, 2), pady=3
             )
-            ttk.Label(grid, textvariable=var, font=val_font,
+            ttk.Label(grid, textvariable=var, font=val_f,
                       foreground="#0055aa", width=10).grid(
-                row=row // 2, column=(row % 2) * 2 + 1, sticky="w", pady=3
+                row=r, column=c * 2 + 1, sticky="w", pady=3
             )
 
-        # Buttons
+        # ── Action buttons ────────────────────────────────────────────
         btn_row = ttk.Frame(frm)
         btn_row.pack()
         self._confirm_btn = ttk.Button(
@@ -735,9 +767,8 @@ class PPTPosPickerDialog(tk.Toplevel):
             command=self._confirm, state="disabled",
         )
         self._confirm_btn.pack(side="left", padx=4)
-        ttk.Button(btn_row, text="Cancel", width=10, command=self._cancel).pack(
-            side="left", padx=4
-        )
+        ttk.Button(btn_row, text="Cancel", width=10,
+                   command=self._cancel).pack(side="left", padx=4)
 
         self._status_var = tk.StringVar(value="Opening PowerPoint…")
         ttk.Label(
@@ -746,7 +777,29 @@ class PPTPosPickerDialog(tk.Toplevel):
         ).pack(pady=(12, 0))
 
     # ------------------------------------------------------------------
-    # Background worker (all COM calls)
+    # Navigation (main thread)
+    # ------------------------------------------------------------------
+
+    def _prev(self) -> None:
+        self._send_goto(self._cur_slide - 1)
+
+    def _next(self) -> None:
+        self._send_goto(self._cur_slide + 1)
+
+    def _send_goto(self, n: int) -> None:
+        self._prev_btn.config(state="disabled")
+        self._next_btn.config(state="disabled")
+        self._cmdq.put(("goto", n))
+
+    def _update_nav(self) -> None:
+        self._slide_lbl_var.set(f"{self._cur_slide}  of  {self._total}")
+        self._prev_btn.config(state="normal" if self._cur_slide > 1 else "disabled")
+        self._next_btn.config(
+            state="normal" if self._cur_slide < self._total else "disabled"
+        )
+
+    # ------------------------------------------------------------------
+    # Background worker – all COM lives here
     # ------------------------------------------------------------------
 
     def _worker(self) -> None:
@@ -756,9 +809,22 @@ class PPTPosPickerDialog(tk.Toplevel):
         except Exception:
             pass
 
-        ppt = None
-        prs = None
-        shape = None
+        ppt = shape = prs = None
+
+        def _style(s) -> None:
+            s.Name = "_img_placeholder_"
+            s.Line.ForeColor.RGB = 255 + 140 * 256   # orange
+            s.Line.Weight = 2.5
+            s.Line.DashStyle = 2                      # dashed
+            s.Fill.ForeColor.RGB = 255 + 165 * 256
+            s.Fill.Transparency = 0.75
+            tf = s.TextFrame
+            tf.TextRange.Text = "IMAGE PLACEHOLDER\nMove & resize to set position"
+            tf.TextRange.Font.Size = 12
+            tf.TextRange.Font.Bold = True
+            tf.TextRange.Font.Color.RGB = 255 + 69 * 256
+            tf.VerticalAnchor = 3
+            tf.TextRange.ParagraphFormat.Alignment = 2
 
         try:
             try:
@@ -769,80 +835,84 @@ class PPTPosPickerDialog(tk.Toplevel):
 
             ppt = win32com.client.DispatchEx("PowerPoint.Application")
             ppt.Visible = True
-            ppt.DisplayAlerts = 0  # ppAlertsNone – suppress save prompts
+            ppt.DisplayAlerts = 0
 
             abs_path = str(Path(self._pptx_path).resolve())
-            # Untitled=True opens as an unnamed copy – original file is never modified
             prs = ppt.Presentations.Open(abs_path, ReadOnly=False, Untitled=True)
 
-            n = prs.Slides.Count
-            sn = min(max(1, self._slide_number), n)
-            slide = prs.Slides(sn)
-            prs.Windows(1).View.GotoSlide(sn)
+            n_slides = prs.Slides.Count
+            cur = min(max(1, self._slide_number), n_slides)
+            P   = self._PTS
 
-            # Bring PowerPoint to front
+            slide = prs.Slides(cur)
+            prs.Windows(1).View.GotoSlide(cur)
             try:
                 ppt.ActiveWindow.Activate()
             except Exception:
                 pass
 
-            # Insert placeholder rectangle (positions in points)
-            P = self._PTS
             l, t, w, h = self._init
             shape = slide.Shapes.AddShape(1, l * P, t * P, w * P, h * P)
-            shape.Name = "_img_placeholder_"
+            _style(shape)
 
-            # Style: orange border, transparent fill, centred label
-            shape.Line.ForeColor.RGB = 255 + 140 * 256        # orange
-            shape.Line.Weight = 2.5
-            shape.Line.DashStyle = 2                           # dashed
-            shape.Fill.ForeColor.RGB = 255 + 165 * 256        # light orange
-            shape.Fill.Transparency = 0.75
+            self._q.put(("ready", (n_slides, cur)))
 
-            tf = shape.TextFrame
-            tf.TextRange.Text = "IMAGE PLACEHOLDER\nMove & resize to set position"
-            tf.TextRange.Font.Size = 12
-            tf.TextRange.Font.Bold = True
-            tf.TextRange.Font.Color.RGB = 255 + 69 * 256      # orange-red
-            tf.VerticalAnchor = 3                              # msoAnchorMiddle
-            tf.TextRange.ParagraphFormat.Alignment = 2        # ppAlignCenter
-
-            self._q.put(("ready", None))
-
-            # Poll loop
             while not self._stop.is_set():
+
+                # ── Handle any slide-change commands ──────────────────
+                try:
+                    while True:
+                        cmd, data = self._cmdq.get_nowait()
+                        if cmd == "goto":
+                            target = min(max(1, data), n_slides)
+                            if target != cur:
+                                # Preserve current geometry then move placeholder
+                                try:
+                                    gl, gt, gw, gh = (
+                                        shape.Left, shape.Top,
+                                        shape.Width, shape.Height,
+                                    )
+                                    shape.Delete()
+                                except Exception:
+                                    gl, gt, gw, gh = (
+                                        self._init[0] * P, self._init[1] * P,
+                                        self._init[2] * P, self._init[3] * P,
+                                    )
+                                cur   = target
+                                slide = prs.Slides(cur)
+                                prs.Windows(1).View.GotoSlide(cur)
+                                shape = slide.Shapes.AddShape(
+                                    1, gl, gt, gw, gh
+                                )
+                                _style(shape)
+                                self._q.put(("slide", cur))
+                except _queue.Empty:
+                    pass
+
+                # ── Poll position ─────────────────────────────────────
                 try:
                     pos = (
-                        round(shape.Left  / P, 3),
-                        round(shape.Top   / P, 3),
-                        round(shape.Width / P, 3),
-                        round(shape.Height/ P, 3),
+                        round(shape.Left   / P, 3),
+                        round(shape.Top    / P, 3),
+                        round(shape.Width  / P, 3),
+                        round(shape.Height / P, 3),
                     )
                     self._q.put(("pos", pos))
                 except Exception:
                     pass
+
                 self._stop.wait(0.4)
 
         except Exception as exc:
             self._q.put(("err", str(exc)))
         finally:
             self._q.put(("done", None))
-            # Clean up: delete placeholder, close copy without saving
-            try:
-                if shape:
-                    shape.Delete()
-            except Exception:
-                pass
-            try:
-                if prs:
-                    prs.Close()
-            except Exception:
-                pass
-            try:
-                if ppt:
-                    ppt.Quit()
-            except Exception:
-                pass
+            for obj, method in [(shape, "Delete"), (prs, "Close"), (ppt, "Quit")]:
+                try:
+                    if obj:
+                        getattr(obj, method)()
+                except Exception:
+                    pass
             try:
                 import pythoncom
                 pythoncom.CoUninitialize()
@@ -858,12 +928,20 @@ class PPTPosPickerDialog(tk.Toplevel):
             while True:
                 kind, data = self._q.get_nowait()
                 if kind == "ready":
+                    n, cur = data
+                    self._total    = n
+                    self._cur_slide = cur
+                    self._update_nav()
                     self._status_var.set(
-                        f"Slide {self._slide_number}  —  move & resize the orange rectangle"
+                        "Move & resize the orange rectangle, then click Confirm."
                     )
+                elif kind == "slide":
+                    self._cur_slide = data
+                    self._update_nav()
+                    self._status_var.set(f"Moved to slide {data}")
                 elif kind == "pos":
                     l, t, w, h = data
-                    self._last = data
+                    self._last_pos = data
                     self._left_var.set(f"{l:.2f} in")
                     self._top_var.set(f"{t:.2f} in")
                     self._width_var.set(f"{w:.2f} in")
@@ -884,7 +962,7 @@ class PPTPosPickerDialog(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _confirm(self) -> None:
-        self.result = self._last
+        self.result = (self._cur_slide,) + self._last_pos
         self._cleanup()
 
     def _cancel(self) -> None:
