@@ -1,0 +1,11 @@
+# Excel Range Screenshot Manager – Python dependencies
+#
+# Install with:  pip install -r requirements.txt
+#
+# pywin32   – Excel COM automation + Windows clipboard access
+# Pillow    – clipboard image grab and PNG saving; thumbnail preview
+# openpyxl  – fast sheet-name detection without opening Excel (optional but recommended)
+
+pywin32>=306
+Pillow>=10.0.0
+openpyxl>=3.1.0

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "139a8c66-176b-461e-b71a-8669554ce5ec",
+      "name": "test1",
+      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
+      "sheet_name": "CP18 State Server",
+      "cell_range": "A1:H20",
+      "last_capture_path": "screenshots\\test1_20260225_113258.png",
+      "last_capture_time": "2026-02-25 11:33",
+      "notes": ""
+    }
+  ]
+}
