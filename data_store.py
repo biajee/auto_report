@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,6 +22,9 @@ class Entry:
     last_capture_path: Optional[str] = None
     last_capture_time: Optional[str] = None
     notes: str = ""
+
+    # Dropdown cells to set before capture: [{"cell": "B2", "value": "Q1"}]
+    dropdowns: list = field(default_factory=list)
 
     # PowerPoint destination (all optional)
     pptx_file: Optional[str] = None

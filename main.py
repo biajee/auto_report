@@ -46,6 +46,62 @@ MIN_WIDTH, MIN_HEIGHT = 780, 480
 
 
 # ===========================================================================
+# Tiny dialog for one dropdown-cell setting
+# ===========================================================================
+
+
+class DropdownItemDialog(tk.Toplevel):
+    """Add / edit a single (cell, value) dropdown setting."""
+
+    def __init__(self, parent, cell: str = "", value: str = "") -> None:
+        super().__init__(parent)
+        self.title("Dropdown Cell")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.grab_set()
+        self.result: Optional[tuple] = None   # (cell, value)
+
+        frm = ttk.Frame(self, padding=16)
+        frm.pack(fill="both", expand=True)
+        p = {"padx": 6, "pady": 4}
+
+        ttk.Label(frm, text="Cell address:").grid(row=0, column=0, sticky="w", **p)
+        self._cell_var = tk.StringVar(value=cell)
+        ttk.Entry(frm, textvariable=self._cell_var, width=10).grid(
+            row=0, column=1, sticky="w", **p
+        )
+        ttk.Label(frm, text="e.g. B2", foreground="#888").grid(
+            row=0, column=2, sticky="w", **p
+        )
+
+        ttk.Label(frm, text="Value to set:").grid(row=1, column=0, sticky="w", **p)
+        self._val_var = tk.StringVar(value=value)
+        ttk.Entry(frm, textvariable=self._val_var, width=30).grid(
+            row=1, column=1, columnspan=2, sticky="ew", **p
+        )
+
+        btn_row = ttk.Frame(frm)
+        btn_row.grid(row=2, column=0, columnspan=3, pady=(10, 0))
+        ttk.Button(btn_row, text="OK",     width=8, command=self._ok).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="Cancel", width=8, command=self.destroy).pack(side="left", padx=4)
+
+        self.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        self.geometry(f"+{px + (pw - w) // 2}+{py + (ph - h) // 2}")
+
+    def _ok(self) -> None:
+        cell  = self._cell_var.get().strip().upper()
+        value = self._val_var.get().strip()
+        if not cell:
+            messagebox.showwarning("Validation", "Cell address is required.", parent=self)
+            return
+        self.result = (cell, value)
+        self.destroy()
+
+
+# ===========================================================================
 # Add / Edit dialog
 # ===========================================================================
 
@@ -131,11 +187,43 @@ class EntryDialog(tk.Toplevel):
         self._notes = tk.Text(frm, width=40, height=3, font=("TkDefaultFont", 9))
         self._notes.grid(row=4, column=1, columnspan=2, sticky="ew", **p)
 
-        # Row 5 – PowerPoint Destination
+        # Row 5 – Dropdown Cells
+        dd_outer = ttk.LabelFrame(
+            frm, text=" Dropdown Cells (optional) ", padding=(8, 6)
+        )
+        dd_outer.grid(row=5, column=0, columnspan=3, sticky="ew", padx=8, pady=(6, 0))
+
+        dd_inner = ttk.Frame(dd_outer)
+        dd_inner.pack(fill="both", expand=True)
+
+        self._dd_tree = ttk.Treeview(
+            dd_inner, columns=("cell", "value"), show="headings", height=3
+        )
+        self._dd_tree.heading("cell",  text="Cell")
+        self._dd_tree.heading("value", text="Value to Set")
+        self._dd_tree.column("cell",  width=70,  stretch=False)
+        self._dd_tree.column("value", width=240, stretch=True)
+        self._dd_tree.pack(side="left", fill="both", expand=True)
+        self._dd_tree.bind("<Double-1>", lambda _e: self._dd_edit())
+
+        dd_btns = ttk.Frame(dd_inner)
+        dd_btns.pack(side="left", fill="y", padx=(6, 0))
+        ttk.Button(dd_btns, text="+ Add",  width=8, command=self._dd_add).pack(pady=2)
+        ttk.Button(dd_btns, text="Edit",   width=8, command=self._dd_edit).pack(pady=2)
+        ttk.Button(dd_btns, text="Delete", width=8, command=self._dd_delete).pack(pady=2)
+
+        ttk.Label(
+            dd_outer,
+            text="Values are set before each capture. "
+                 "Excel recalculates only when a value changes.",
+            foreground="#888", font=("TkDefaultFont", 8),
+        ).pack(anchor="w", pady=(4, 0))
+
+        # Row 6 – PowerPoint Destination
         ppt_frm = ttk.LabelFrame(
             frm, text=" PowerPoint Destination (optional) ", padding=(8, 6)
         )
-        ppt_frm.grid(row=5, column=0, columnspan=3, sticky="ew", padx=8, pady=(6, 0))
+        ppt_frm.grid(row=6, column=0, columnspan=3, sticky="ew", padx=8, pady=(6, 0))
 
         pp = {"padx": 4, "pady": 3}
 
@@ -185,9 +273,9 @@ class EntryDialog(tk.Toplevel):
 
         ppt_frm.columnconfigure(1, weight=1)
 
-        # Row 6 – Buttons
+        # Row 7 – Buttons
         btn_row = ttk.Frame(frm)
-        btn_row.grid(row=6, column=0, columnspan=3, pady=(10, 0))
+        btn_row.grid(row=7, column=0, columnspan=3, pady=(10, 0))
         ttk.Button(btn_row, text="OK", width=10, command=self._ok).pack(
             side="left", padx=4
         )
@@ -205,6 +293,10 @@ class EntryDialog(tk.Toplevel):
         self._notes.insert("1.0", entry.notes or "")
         # Load sheets then select the stored sheet
         self._load_sheets(preselect=entry.sheet_name)
+        # Dropdown cells
+        for dd in (entry.dropdowns or []):
+            self._dd_tree.insert("", "end", values=(dd.get("cell", ""), dd.get("value", "")))
+
         # PPT fields
         self._pptx_file_var.set(entry.pptx_file or "")
         self._pptx_slide_var.set(str(entry.pptx_slide))
@@ -246,6 +338,39 @@ class EntryDialog(tk.Toplevel):
         if names:
             target = preselect if preselect in names else names[0]
             self._sheet_var.set(target)
+
+    # ------------------------------------------------------------------
+    # Dropdown cell helpers
+    # ------------------------------------------------------------------
+
+    def _dd_add(self) -> None:
+        dlg = DropdownItemDialog(self)
+        self.wait_window(dlg)
+        if dlg.result:
+            self._dd_tree.insert("", "end", values=dlg.result)
+
+    def _dd_edit(self) -> None:
+        sel = self._dd_tree.selection()
+        if not sel:
+            return
+        iid = sel[0]
+        cell, value = self._dd_tree.item(iid, "values")
+        dlg = DropdownItemDialog(self, cell=cell, value=value)
+        self.wait_window(dlg)
+        if dlg.result:
+            self._dd_tree.item(iid, values=dlg.result)
+
+    def _dd_delete(self) -> None:
+        sel = self._dd_tree.selection()
+        if sel:
+            self._dd_tree.delete(*sel)
+
+    def _get_dropdowns(self) -> list:
+        return [
+            {"cell": self._dd_tree.set(iid, "cell"),
+             "value": self._dd_tree.set(iid, "value")}
+            for iid in self._dd_tree.get_children()
+        ]
 
     # ------------------------------------------------------------------
     # PPT helpers
@@ -309,16 +434,18 @@ class EntryDialog(tk.Toplevel):
         try:
             dlg = RangePickerDialog(self, file_path, initial_sheet=self._sheet_var.get())
             self.wait_window(dlg)
-            if dlg.result_range:
-                self._range_var.set(dlg.result_range)
-            if dlg.result_sheet:
-                sheets = list(self._sheet_cb["values"])
-                if dlg.result_sheet not in sheets:
-                    self._load_sheets(preselect=dlg.result_sheet)
-                else:
-                    self._sheet_var.set(dlg.result_sheet)
+            if self.winfo_exists():
+                if dlg.result_range:
+                    self._range_var.set(dlg.result_range)
+                if dlg.result_sheet:
+                    sheets = list(self._sheet_cb["values"])
+                    if dlg.result_sheet not in sheets:
+                        self._load_sheets(preselect=dlg.result_sheet)
+                    else:
+                        self._sheet_var.set(dlg.result_sheet)
         finally:
-            self.grab_set()
+            if self.winfo_exists():
+                self.grab_set()
 
     def _pick_ppt_pos(self) -> None:
         pptx_file = self._pptx_file_var.get().strip()
@@ -398,6 +525,8 @@ class EntryDialog(tk.Toplevel):
             messagebox.showwarning("Validation", "\n".join(errors), parent=self)
             return
 
+        dropdowns = self._get_dropdowns()
+
         if self._entry:
             self.result = Entry(
                 id=self._entry.id,
@@ -408,6 +537,7 @@ class EntryDialog(tk.Toplevel):
                 last_capture_path=self._entry.last_capture_path,
                 last_capture_time=self._entry.last_capture_time,
                 notes=notes,
+                dropdowns=dropdowns,
                 pptx_file=pptx_file,
                 pptx_slide=pptx_slide,
                 pptx_left=pptx_left,
@@ -417,6 +547,7 @@ class EntryDialog(tk.Toplevel):
             )
         else:
             e = Entry.create(name, file_path, sheet, cell_range, notes)
+            e.dropdowns   = dropdowns
             e.pptx_file   = pptx_file
             e.pptx_slide  = pptx_slide
             e.pptx_left   = pptx_left
@@ -977,6 +1108,170 @@ class PPTPosPickerDialog(tk.Toplevel):
 
 
 # ===========================================================================
+# Progress / log dialog
+# ===========================================================================
+
+
+class ProgressDialog(tk.Toplevel):
+    """
+    Non-modal floating window that streams step-by-step log messages
+    from background workers.  Thread-safe: call log() / advance() / done()
+    from any thread.
+    """
+
+    _LEVELS = {
+        "head": {"foreground": "#dcdcaa", "font": ("Consolas", 8, "bold")},
+        "ok":   {"foreground": "#4ec9b0"},
+        "err":  {"foreground": "#f44747"},
+        "dim":  {"foreground": "#6a9955"},
+    }
+
+    def __init__(self, parent, title: str = "Progress", total: int = 0) -> None:
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(True, True)
+        self.transient(parent)
+        # NOT grab_set – stays non-modal so the main window updates freely
+
+        self._total       = total
+        self._done_count  = 0
+        self._finished    = False
+        self._q: _queue.Queue = _queue.Queue()
+        self._poll_id: Optional[str] = None
+
+        self._build()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Centre over parent
+        self.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        self.geometry(f"560x380+{px + (pw - 560) // 2}+{py + (ph - 380) // 2}")
+
+        self._drain()
+
+    # ------------------------------------------------------------------
+    # UI
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        frm = ttk.Frame(self, padding=10)
+        frm.pack(fill="both", expand=True)
+
+        self._header_var = tk.StringVar(value="Starting…")
+        ttk.Label(
+            frm, textvariable=self._header_var,
+            font=("TkDefaultFont", 9, "bold"),
+        ).pack(anchor="w", pady=(0, 4))
+
+        # Progress bar + counter
+        pb_row = ttk.Frame(frm)
+        pb_row.pack(fill="x", pady=(0, 2))
+        self._pb = ttk.Progressbar(
+            pb_row, maximum=max(self._total, 1), mode="determinate"
+        )
+        self._pb.pack(side="left", fill="x", expand=True)
+        self._pb_lbl_var = tk.StringVar(value="")
+        ttk.Label(pb_row, textvariable=self._pb_lbl_var, width=10, anchor="e").pack(
+            side="left", padx=(6, 0)
+        )
+
+        # Dark log area
+        log_frm = ttk.Frame(frm)
+        log_frm.pack(fill="both", expand=True, pady=(4, 0))
+
+        self._log = tk.Text(
+            log_frm,
+            font=("Consolas", 8),
+            state="disabled",
+            wrap="word",
+            background="#1e1e1e",
+            foreground="#d4d4d4",
+            insertbackground="#d4d4d4",
+            relief="flat",
+        )
+        vsb = ttk.Scrollbar(log_frm, orient="vertical", command=self._log.yview)
+        self._log.configure(yscrollcommand=vsb.set)
+        self._log.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        # Configure colour tags
+        self._log.tag_configure("ts",   foreground="#569cd6")   # timestamp: blue
+        self._log.tag_configure("head", foreground="#dcdcaa",
+                                font=("Consolas", 8, "bold"))   # yellow bold
+        self._log.tag_configure("ok",   foreground="#4ec9b0")   # teal
+        self._log.tag_configure("err",  foreground="#f44747")   # red
+        self._log.tag_configure("dim",  foreground="#6a9955")   # muted green
+
+        self._close_btn = ttk.Button(
+            frm, text="Close", command=self._on_close, state="disabled"
+        )
+        self._close_btn.pack(pady=(8, 0))
+
+    # ------------------------------------------------------------------
+    # Thread-safe public API
+    # ------------------------------------------------------------------
+
+    def log(self, msg: str, level: str = "info") -> None:
+        self._q.put(("log", msg, level))
+
+    def advance(self, label: str = "") -> None:
+        self._q.put(("advance", label))
+
+    def done(self) -> None:
+        self._q.put(("done", None))
+
+    # ------------------------------------------------------------------
+    # Main-thread drain
+    # ------------------------------------------------------------------
+
+    def _drain(self) -> None:
+        try:
+            while True:
+                item = self._q.get_nowait()
+                kind = item[0]
+                if kind == "log":
+                    _, msg, level = item
+                    self._append(msg, level)
+                elif kind == "advance":
+                    _, label = item
+                    self._done_count += 1
+                    self._pb["value"] = self._done_count
+                    if self._total:
+                        self._pb_lbl_var.set(f"{self._done_count} / {self._total}")
+                    if label:
+                        self._header_var.set(label)
+                elif kind == "done":
+                    self._finished = True
+                    self._header_var.set("Done")
+                    self._close_btn.config(state="normal")
+                    if self._poll_id:
+                        self.after_cancel(self._poll_id)
+                        self._poll_id = None
+                    return
+        except _queue.Empty:
+            pass
+        self._poll_id = self.after(80, self._drain)
+
+    def _append(self, msg: str, level: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        self._log.config(state="normal")
+        self._log.insert("end", f"[{ts}]  ", "ts")
+        self._log.insert("end", msg + "\n", level if level in self._LEVELS else "")
+        self._log.see("end")
+        self._log.config(state="disabled")
+
+    # ------------------------------------------------------------------
+
+    def _on_close(self) -> None:
+        if self._finished:
+            if self._poll_id:
+                self.after_cancel(self._poll_id)
+            self.destroy()
+        # if not finished, ignore – must wait for done()
+
+
+# ===========================================================================
 # Main application window
 # ===========================================================================
 
@@ -1250,21 +1545,31 @@ class MainApp(tk.Tk):
         self._set_status(f"Capturing {n} item{'s' if n > 1 else ''}…")
         self._set_action_btns(False)
 
+        dlg = ProgressDialog(self, title="Capturing Screenshots", total=n)
+
         def worker() -> None:
             results = []
             for e in entries:
+                dlg.log(f"▶  {e.name}", "head")
                 try:
                     path = self._capturer.capture(
-                        e.file_path, e.sheet_name, e.cell_range, e.name
+                        e.file_path, e.sheet_name, e.cell_range, e.name,
+                        dropdowns=e.dropdowns,
+                        log=dlg.log,
                     )
                     e.last_capture_path = path
                     e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M")
                     self._store.update(e)
                     results.append((e, path, None))
+                    dlg.log(f"✓  Done: {e.name}", "ok")
                 except CaptureError as exc:
+                    dlg.log(f"✗  {exc}", "err")
                     results.append((e, None, str(exc)))
                 except Exception as exc:
+                    dlg.log(f"✗  Unexpected error: {exc}", "err")
                     results.append((e, None, f"Unexpected error: {exc}"))
+                dlg.advance(e.name)
+            dlg.done()
             self.after(0, lambda: self._capture_done(results))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1421,21 +1726,30 @@ class MainApp(tk.Tk):
         self._set_status(f"Capturing {n} item{'s' if n > 1 else ''}…")
         self._set_action_btns(False)
 
+        dlg = ProgressDialog(self, title="Capture & Export to PowerPoint", total=n)
+
         def worker() -> None:
             cap_results = []
             for e in entries:
+                dlg.log(f"▶  {e.name}", "head")
                 try:
                     path = self._capturer.capture(
-                        e.file_path, e.sheet_name, e.cell_range, e.name
+                        e.file_path, e.sheet_name, e.cell_range, e.name,
+                        dropdowns=e.dropdowns,
+                        log=dlg.log,
                     )
                     e.last_capture_path = path
                     e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M")
                     self._store.update(e)
                     cap_results.append((e, path, None))
+                    dlg.log(f"✓  Captured: {e.name}", "ok")
                 except CaptureError as exc:
+                    dlg.log(f"✗  {exc}", "err")
                     cap_results.append((e, None, str(exc)))
                 except Exception as exc:
+                    dlg.log(f"✗  Unexpected: {exc}", "err")
                     cap_results.append((e, None, f"Unexpected: {exc}"))
+                dlg.advance(e.name)
 
             # Build paste jobs for entries that captured OK and have a PPT dest
             jobs = [
@@ -1452,13 +1766,18 @@ class MainApp(tk.Tk):
                 for e, path, err in cap_results
                 if err is None and e.has_ppt_dest()
             ]
+            if jobs:
+                dlg.log("── Pasting to PowerPoint ──", "head")
             try:
-                ppt_results = PPTExporter().paste_batch(jobs) if jobs else []
+                ppt_results = PPTExporter().paste_batch(jobs, log=dlg.log) if jobs else []
             except PPTExportError as exc:
+                dlg.log(f"✗  {exc}", "err")
                 ppt_results = [(j, str(exc)) for j in jobs]
             except Exception as exc:
+                dlg.log(f"✗  Unexpected error: {exc}", "err")
                 ppt_results = [(j, f"Unexpected error: {exc}") for j in jobs]
 
+            dlg.done()
             self.after(0, lambda: self._run_all_done(cap_results, ppt_results))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -1467,6 +1786,8 @@ class MainApp(tk.Tk):
         n = len(entries)
         self._set_status(f"Pasting {n} item{'s' if n > 1 else ''} to PPT…")
         self._set_action_btns(False)
+
+        dlg = ProgressDialog(self, title="Pasting to PowerPoint", total=1)
 
         def worker() -> None:
             jobs = [
@@ -1483,11 +1804,15 @@ class MainApp(tk.Tk):
                 for e in entries
             ]
             try:
-                results = PPTExporter().paste_batch(jobs)
+                results = PPTExporter().paste_batch(jobs, log=dlg.log)
             except PPTExportError as exc:
+                dlg.log(f"✗  {exc}", "err")
                 results = [(j, str(exc)) for j in jobs]
             except Exception as exc:
+                dlg.log(f"✗  Unexpected error: {exc}", "err")
                 results = [(j, f"Unexpected error: {exc}") for j in jobs]
+            dlg.advance("Pasting complete")
+            dlg.done()
             self.after(0, lambda: self._paste_done(results))
 
         threading.Thread(target=worker, daemon=True).start()
