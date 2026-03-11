@@ -7,15 +7,55 @@
       "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
       "sheet_name": "CP18 State Server",
       "cell_range": "C13:I24",
-      "last_capture_path": "screenshots\\test1_20260225_151230.png",
-      "last_capture_time": "2026-02-25 15:12",
+      "last_capture_path": "screenshots\\test1_20260225_202510.png",
+      "last_capture_time": "2026-02-25 20:25",
       "notes": "",
+      "dropdowns": [],
       "pptx_file": "D:/code/auto_report/deck.pptx",
       "pptx_slide": 2,
       "pptx_left": 0.5,
       "pptx_top": 0.5,
       "pptx_width": 2.98,
       "pptx_height": 5.52
+    },
+    {
+      "id": "4c5cc34e-3416-4feb-a1fa-b40fff18ea01",
+      "name": "test2",
+      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
+      "sheet_name": "CP18 State Server",
+      "cell_range": "B12:J24",
+      "last_capture_path": "screenshots\\test2_20260225_202511.png",
+      "last_capture_time": "2026-02-25 20:25",
+      "notes": "",
+      "dropdowns": [],
+      "pptx_file": "D:/code/auto_report/deck.pptx",
+      "pptx_slide": 1,
+      "pptx_left": 6.13,
+      "pptx_top": 1.47,
+      "pptx_width": 5.99,
+      "pptx_height": 3.67
+    },
+    {
+      "id": "4457495e-d5cd-4595-8c70-765aeba10750",
+      "name": "test3",
+      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
+      "sheet_name": "CP18 State Server",
+      "cell_range": "B8:L31",
+      "last_capture_path": "screenshots\\test3_20260225_202513.png",
+      "last_capture_time": "2026-02-25 20:25",
+      "notes": "",
+      "dropdowns": [
+        {
+          "cell": "N2",
+          "value": "Open"
+        }
+      ],
+      "pptx_file": "D:/code/auto_report/deck.pptx",
+      "pptx_slide": 2,
+      "pptx_left": 0.5,
+      "pptx_top": 0.5,
+      "pptx_width": 11.94,
+      "pptx_height": 6.12
     }
   ]
 }
