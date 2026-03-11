@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Finance Team Report Manager</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f3f4f6; color: #1f2937; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: #1e3a5f; color: #fff; padding: 0 24px;
+    display: flex; align-items: center; gap: 16px; height: 52px;
+  }
+  .topbar h1 { font-size: 1.1rem; font-weight: 600; flex: 1; }
+  .topbar button { font-size: .85rem; }
+
+  /* ── Layout ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  /* ── Buttons ── */
+  button {
+    cursor: pointer; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: .85rem; font-weight: 500;
+    transition: filter .15s;
+  }
+  button:hover { filter: brightness(.9); }
+  button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+  .btn-primary   { background: #2563eb; color: #fff; }
+  .btn-success   { background: #16a34a; color: #fff; }
+  .btn-warning   { background: #d97706; color: #fff; }
+  .btn-danger    { background: #dc2626; color: #fff; }
+  .btn-secondary { background: #6b7280; color: #fff; }
+  .btn-outline   { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 2px; margin-bottom: 16px; }
+  .tab-btn {
+    padding: 8px 22px; border-radius: 8px 8px 0 0; font-size: .9rem;
+    font-weight: 600; background: #e5e7eb; color: #6b7280;
+    border: none; cursor: pointer; transition: background .15s;
+  }
+  .tab-btn.active { background: #fff; color: #1e3a5f;
+    box-shadow: 0 -2px 0 #2563eb inset; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Task type badges ── */
+  .type-badge {
+    display: inline-block; padding: 1px 7px; border-radius: 4px;
+    font-size: .7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; flex-shrink: 0;
+  }
+  .type-excel   { background: #dcfce7; color: #166534; }
+  .type-powerbi { background: #ede9fe; color: #5b21b6; }
+
+  /* ── Reports ── */
+  .reports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr));
+                  gap: 16px; }
+  .report-card {
+    background: #fff; border-radius: 10px; padding: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+  }
+  .report-card-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .report-card-title { font-weight: 700; font-size: 1rem; flex: 1; }
+  .report-card-notes { font-size: .78rem; color: #9ca3af; margin-bottom: 10px; }
+  .report-entry-list { list-style: none; margin-bottom: 12px; }
+  .report-entry-list li {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 0; border-bottom: 1px solid #f3f4f6; font-size: .82rem;
+  }
+  .report-entry-list li:last-child { border-bottom: none; }
+  .entry-dot { width: 8px; height: 8px; border-radius: 50%; background: #2563eb;
+               flex-shrink: 0; }
+  .entry-dot.captured { background: #16a34a; }
+  .report-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 16px; align-items: center;
+  }
+
+  /* ── Table ── */
+  .table-wrap { background: #fff; border-radius: 10px; overflow: auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th {
+    background: #f9fafb; text-align: left; padding: 10px 12px;
+    font-weight: 600; border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fafb; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 9999px;
+    font-size: .75rem; font-weight: 600;
+  }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-gray   { background: #f3f4f6; color: #6b7280; }
+  .badge-orange { background: #ffedd5; color: #c2410c; }
+
+  .thumb { width: 80px; height: 50px; object-fit: cover; border-radius: 4px;
+           border: 1px solid #e5e7eb; cursor: pointer; }
+  .no-thumb { width: 80px; height: 50px; background: #f3f4f6; border-radius: 4px;
+              display: flex; align-items: center; justify-content: center;
+              font-size: .7rem; color: #9ca3af; }
+
+  .row-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* ── Modal ── */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 100;
+    align-items: flex-start; justify-content: center; padding: 40px 16px;
+    overflow-y: auto;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 660px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.25); padding: 24px;
+    position: relative;
+  }
+  .modal h2 { font-size: 1.1rem; margin-bottom: 20px; }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: none; border: none; font-size: 1.3rem; cursor: pointer;
+    color: #6b7280; line-height: 1;
+  }
+
+  /* ── Form ── */
+  .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: 10px 12px;
+               align-items: center; }
+  .form-grid label { font-size: .85rem; font-weight: 500; color: #374151; }
+  .form-grid .full { grid-column: 1 / -1; }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 6px 10px; font-size: .875rem; outline: none;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { border-color: #2563eb; }
+  textarea { resize: vertical; min-height: 56px; }
+
+  .path-row { display: flex; gap: 6px; }
+  .path-row input { flex: 1; }
+
+  /* section headings inside modal */
+  .section-head {
+    grid-column: 1 / -1; font-size: .8rem; font-weight: 600;
+    color: #6b7280; text-transform: uppercase; letter-spacing: .05em;
+    margin-top: 10px; border-top: 1px solid #e5e7eb; padding-top: 10px;
+  }
+
+  /* ── Dropdown table inside form ── */
+  .dd-wrap { grid-column: 1 / -1; }
+  .dd-table-wrap { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;
+                   margin-bottom: 6px; }
+  .dd-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .dd-table th { background: #f9fafb; padding: 6px 10px; font-weight: 600;
+                 border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .dd-table td { padding: 5px 10px; border-bottom: 1px solid #f3f4f6; }
+  .dd-table tr:last-child td { border-bottom: none; }
+  .dd-actions { display: flex; gap: 4px; margin-top: 4px; }
+
+  /* ── Inline dd row editor ── */
+  .dd-editor { display: flex; gap: 6px; align-items: center; }
+  .dd-editor input[type=text] { padding: 4px 8px; }
+
+  /* ── Log panel ── */
+  .log-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .log-overlay.open { display: flex; }
+  .log-panel {
+    background: #1a1a2e; color: #e2e8f0; border-radius: 12px;
+    width: 680px; max-width: 95vw; max-height: 70vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4); padding: 20px;
+  }
+  .log-panel h3 { margin-bottom: 12px; font-size: 1rem; }
+  .log-body {
+    flex: 1; overflow-y: auto; font-family: monospace; font-size: .82rem;
+    background: #0d0d1a; border-radius: 6px; padding: 12px;
+    min-height: 200px; white-space: pre-wrap; word-break: break-all;
+  }
+  .log-body .l-info { color: #93c5fd; }
+  .log-body .l-ok   { color: #86efac; }
+  .log-body .l-err  { color: #fca5a5; }
+  .log-body .l-dim  { color: #6b7280; }
+  .log-body .l-head { color: #fbbf24; font-weight: bold; }
+  .log-footer { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+  .log-status { flex: 1; font-size: .82rem; }
+
+  /* ── Image preview modal ── */
+  .img-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.75); z-index: 300;
+    align-items: center; justify-content: center;
+  }
+  .img-overlay.open { display: flex; }
+  .img-overlay img { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state { text-align: center; color: #9ca3af; padding: 48px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════ TOP BAR -->
+<div class="topbar">
+  <h1>Finance Team Report Manager</h1>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ MAIN CONTENT -->
+<div class="container">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('reports')">Reports</button>
+    <button class="tab-btn"       onclick="switchTab('entries')">Entries</button>
+  </div>
+
+  <!-- ── Reports tab ── -->
+  <div class="tab-panel active" id="tab-reports">
+    <div class="toolbar">
+      <button class="btn-primary" onclick="openAddReportModal()">+ New Report</button>
+    </div>
+    <div class="reports-grid" id="reports-grid">
+      <div class="empty-state" style="grid-column:1/-1">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ── Entries tab ── -->
+  <div class="tab-panel" id="tab-entries">
+
+    <!-- Excel section -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <h2 style="font-size:1rem;font-weight:700">
+        <span class="type-badge type-excel">Excel</span>&nbsp; Screenshot Tasks
+      </h2>
+      <button class="btn-primary" onclick="openAddModal()">+ Add</button>
+      <button class="btn-success" onclick="captureAll()">▶ Capture All</button>
+      <button class="btn-warning" onclick="exportAll()">↑ Re-export All</button>
+    </div>
+    <div class="table-wrap" style="margin-bottom:28px">
+      <table id="entries-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Excel File</th><th>Sheet / Range</th>
+            <th>Dropdowns</th><th>Last Capture</th><th>Preview</th>
+            <th>PPT Destination</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="entries-body">
+          <tr><td colspan="8" class="empty-state">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Power BI section -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <h2 style="font-size:1rem;font-weight:700">
+        <span class="type-badge type-powerbi">Power BI</span>&nbsp; Screenshot Tasks
+      </h2>
+      <button class="btn-primary" onclick="openAddPbiModal()">+ Add</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>URL</th><th>Page</th>
+            <th>Dropdowns</th><th>Filters</th><th>Buttons</th>
+            <th>Last Capture</th><th>PPT Destination</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pbi-entries-body">
+          <tr><td colspan="9" class="empty-state">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════ ADD / EDIT MODAL -->
+<div class="overlay" id="entry-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <h2 id="modal-title">Add Entry</h2>
+
+    <div class="form-grid" id="entry-form">
+      <!-- Name -->
+      <label>Name <span style="color:red">*</span></label>
+      <input type="text" id="f-name" placeholder="e.g. Revenue Chart Q1"/>
+
+      <!-- Excel file -->
+      <label>Excel File <span style="color:red">*</span></label>
+      <div class="path-row">
+        <input type="text" id="f-file" placeholder="C:\path\to\file.xlsx"
+               oninput="scheduleSheetLoad()"/>
+        <button class="btn-outline" onclick="browseFile()">Browse…</button>
+      </div>
+
+      <!-- Sheet -->
+      <label>Sheet <span style="color:red">*</span></label>
+      <div style="display:flex;gap:6px">
+        <select id="f-sheet" style="flex:1"></select>
+        <button class="btn-outline" onclick="loadSheets()" title="Refresh sheets">↻</button>
+      </div>
+
+      <!-- Range -->
+      <label>Cell Range <span style="color:red">*</span></label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="f-range" placeholder="e.g. A1:H20"
+               style="text-transform:uppercase;flex:1"/>
+        <button class="btn-outline" onclick="openRangePicker()" title="Pick range interactively in Excel">
+          📍 Pick in Excel
+        </button>
+      </div>
+
+      <!-- Notes -->
+      <label>Notes</label>
+      <textarea id="f-notes" rows="2"></textarea>
+
+      <!-- Dropdown cells -->
+      <div class="section-head">Dropdown Cells (optional)</div>
+      <div class="dd-wrap">
+        <div class="dd-table-wrap">
+          <table class="dd-table">
+            <thead><tr><th>Cell</th><th>Value to Set</th><th></th></tr></thead>
+            <tbody id="dd-body"></tbody>
+          </table>
+        </div>
+        <div class="dd-actions">
+          <button class="btn-outline" onclick="ddAdd()">+ Add</button>
+        </div>
+        <p style="font-size:.78rem;color:#9ca3af;margin-top:6px">
+          Values are set before each capture. Excel recalculates only when a value changes.
+        </p>
+      </div>
+
+      <!-- PPT section -->
+      <div class="section-head">PowerPoint Destination (optional)</div>
+
+      <label>PPT File</label>
+      <div class="path-row">
+        <input type="text" id="f-pptx-file" placeholder="C:\path\to\deck.pptx"
+               oninput="onPptxChanged()"/>
+        <button class="btn-outline" onclick="browsePptx()">Browse…</button>
+      </div>
+
+      <label></label>
+      <div id="pptx-info" style="font-size:.78rem;color:#6b7280;min-height:18px"></div>
+
+      <label>Slide #</label>
+      <input type="number" id="f-slide" value="1" min="1" style="width:80px"/>
+
+      <label>Position (inches)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="font-weight:normal;font-size:.82rem">Left
+          <input type="number" id="f-left" value="0.5" step="0.1" min="0" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Top
+          <input type="number" id="f-top" value="0.5" step="0.1" min="0" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Width
+          <input type="number" id="f-width" value="9.0" step="0.1" min="0.1" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Height
+          <input type="number" id="f-height" value="6.5" step="0.1" min="0.1" style="width:70px"/>
+        </label>
+      </div>
+
+      <!-- Submit row -->
+      <div class="full" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitEntry()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ POWER BI MODAL -->
+<div class="overlay" id="pbi-overlay">
+  <div class="modal" style="max-width:680px">
+    <button class="modal-close" onclick="closePbiModal()">&times;</button>
+    <h2 id="pbi-modal-title">Add Power BI Task</h2>
+
+    <div class="form-grid">
+      <label>Name <span style="color:red">*</span></label>
+      <input type="text" id="p-name" placeholder="e.g. Sales Dashboard"/>
+
+      <label>URL <span style="color:red">*</span></label>
+      <input type="text" id="p-url" placeholder="https://app.powerbi.com/..."/>
+
+      <label>Report Page</label>
+      <input type="text" id="p-page" placeholder="e.g. Overview"/>
+
+      <label>Notes</label>
+      <textarea id="p-notes" rows="2"></textarea>
+
+      <!-- Dropdowns -->
+      <div class="section-head">Dropdown Selections</div>
+      <div class="dd-wrap">
+        <div class="dd-table-wrap">
+          <table class="dd-table">
+            <thead><tr><th>Dropdown Label</th><th>Value to Select</th><th></th></tr></thead>
+            <tbody id="p-dd-body"></tbody>
+          </table>
+        </div>
+        <div class="dd-actions">
+          <button class="btn-outline" onclick="pbiDdAdd('p-dd-body','p-dd-label','p-dd-value')">+ Add Dropdown</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="section-head">Filters</div>
+      <div class="dd-wrap">
+        <div class="dd-table-wrap">
+          <table class="dd-table">
+            <thead><tr><th>Filter Name</th><th>Value</th><th></th></tr></thead>
+            <tbody id="p-filter-body"></tbody>
+          </table>
+        </div>
+        <div class="dd-actions">
+          <button class="btn-outline" onclick="pbiDdAdd('p-filter-body','p-f-name','p-f-value')">+ Add Filter</button>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="section-head">Buttons to Click</div>
+      <div class="dd-wrap">
+        <div class="dd-table-wrap">
+          <table class="dd-table">
+            <thead><tr><th>Button Label</th><th></th></tr></thead>
+            <tbody id="p-btn-body"></tbody>
+          </table>
+        </div>
+        <div class="dd-actions">
+          <button class="btn-outline" onclick="pbiBtnAdd()">+ Add Button</button>
+        </div>
+      </div>
+
+      <!-- Crop -->
+      <div class="section-head">Screenshot Crop (optional)</div>
+      <div style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-weight:500;cursor:pointer">
+          <input type="checkbox" id="p-crop-enabled" onchange="toggleCropFields()"/>
+          Enable cropping after screenshot
+        </label>
+        <div id="p-crop-fields" style="display:none;background:#f9fafb;border-radius:8px;padding:12px">
+          <p style="font-size:.78rem;color:#6b7280;margin-bottom:10px">
+            Define the pixel region to keep. Leave Width/Height at 0 to extend to the edge.
+          </p>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <label style="font-size:.85rem;font-weight:500">Left (px)
+              <input type="number" id="p-crop-left"   value="0" min="0" style="width:80px;display:block;margin-top:4px"/>
+            </label>
+            <label style="font-size:.85rem;font-weight:500">Top (px)
+              <input type="number" id="p-crop-top"    value="0" min="0" style="width:80px;display:block;margin-top:4px"/>
+            </label>
+            <label style="font-size:.85rem;font-weight:500">Width (px)
+              <input type="number" id="p-crop-width"  value="0" min="0" style="width:80px;display:block;margin-top:4px"/>
+              <span style="font-size:.72rem;color:#9ca3af">0 = to right edge</span>
+            </label>
+            <label style="font-size:.85rem;font-weight:500">Height (px)
+              <input type="number" id="p-crop-height" value="0" min="0" style="width:80px;display:block;margin-top:4px"/>
+              <span style="font-size:.72rem;color:#9ca3af">0 = to bottom edge</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- PPT destination -->
+      <div class="section-head">PowerPoint Destination (optional)</div>
+
+      <label>PPT File</label>
+      <div class="path-row">
+        <input type="text" id="p-pptx-file" oninput="onPbiPptxChanged()"/>
+        <button class="btn-outline" onclick="browsePbiPptx()">Browse…</button>
+      </div>
+
+      <label></label>
+      <div id="p-pptx-info" style="font-size:.78rem;color:#6b7280;min-height:18px"></div>
+
+      <label>Slide #</label>
+      <input type="number" id="p-slide" value="1" min="1" style="width:80px"/>
+
+      <label>Position (inches)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="font-weight:normal;font-size:.82rem">Left
+          <input type="number" id="p-left" value="0.5" step="0.1" min="0" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Top
+          <input type="number" id="p-top" value="0.5" step="0.1" min="0" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Width
+          <input type="number" id="p-width" value="9.0" step="0.1" min="0.1" style="width:70px"/>
+        </label>
+        <label style="font-weight:normal;font-size:.82rem">Height
+          <input type="number" id="p-height" value="6.5" step="0.1" min="0.1" style="width:70px"/>
+        </label>
+      </div>
+
+      <div class="full" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn-outline" onclick="closePbiModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitPbi()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ REPORT MODAL -->
+<div class="overlay" id="report-overlay">
+  <div class="modal" style="max-width:580px">
+    <button class="modal-close" onclick="closeReportModal()">&times;</button>
+    <h2 id="report-modal-title">New Report</h2>
+    <div class="form-grid">
+      <label>Name <span style="color:red">*</span></label>
+      <input type="text" id="r-name" placeholder="e.g. Monthly Dashboard"/>
+
+      <label>Notes</label>
+      <textarea id="r-notes" rows="2"></textarea>
+
+      <div class="section-head">Tasks in this report</div>
+      <div style="grid-column:1/-1">
+        <p style="font-size:.78rem;color:#9ca3af;margin-bottom:8px">
+          Check tasks to include. Use ↑↓ to reorder. Tasks run in the order shown.
+        </p>
+        <div id="r-entry-list" style="border:1px solid #e5e7eb;border-radius:6px;
+             max-height:320px;overflow-y:auto"></div>
+      </div>
+
+      <div class="full" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn-outline" onclick="closeReportModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitReport()">Save Report</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ LOG PANEL -->
+<div class="log-overlay" id="log-overlay">
+  <div class="log-panel">
+    <h3 id="log-title">Task Progress</h3>
+    <div class="log-body" id="log-body"></div>
+    <div class="log-footer">
+      <span class="log-status" id="log-status">Running…</span>
+      <button class="btn-outline" id="log-close-btn"
+              onclick="closeLog()" disabled>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════ IMAGE PREVIEW -->
+<div class="img-overlay" id="img-overlay" onclick="this.classList.remove('open')">
+  <img id="img-preview" src="" alt="Screenshot preview"/>
+</div>
+
+<!-- ══════════════════════════════════════════════════ RANGE PICKER -->
+<div class="log-overlay" id="picker-overlay">
+  <div class="log-panel" style="width:420px;min-height:auto">
+    <h3>Pick Range in Excel</h3>
+    <p style="font-size:.83rem;color:#94a3b8;margin-bottom:12px">
+      Excel is open. Click a cell or drag to select a range, then click <strong>Confirm</strong>.
+    </p>
+    <div style="background:#0d0d1a;border-radius:6px;padding:14px;font-family:monospace;font-size:.9rem;min-height:60px">
+      <div style="color:#6b7280;font-size:.75rem;margin-bottom:4px">Current selection</div>
+      <div id="picker-sheet" style="color:#fbbf24;font-size:.8rem"></div>
+      <div id="picker-range" style="color:#86efac;font-size:1.1rem;font-weight:bold;letter-spacing:.05em">
+        Waiting for Excel…
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="cancelRangePicker()">Cancel</button>
+      <button class="btn-primary"   id="picker-confirm-btn"
+              onclick="confirmRangePicker()" disabled>Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════ SCRIPT -->
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let entries = [];
+let reports = [];
+let editingId = null;
+let editingReportId = null;
+let sheetLoadTimer = null;
+
+// ─── Boot ─────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadAll);
+
+function loadAll() { loadEntries(); loadPbiEntries(); loadReports(); }
+
+// ─── Tabs ──────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    const names = ['reports','entries'];
+    b.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ─── Entry list ───────────────────────────────────────────────────────────
+async function loadEntries() {
+  const res = await fetch('/api/entries');
+  entries = await res.json();
+  renderTable();
+  // Re-render reports so their embedded entry data stays fresh
+  if (reports.length) renderReports();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('entries-body');
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No entries yet. Click "+ Add Entry" to begin.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(e => `
+    <tr data-id="${e.id}">
+      <td><strong>${esc(e.name)}</strong>${e.notes ? '<br><span style="color:#9ca3af;font-size:.78rem">'+esc(e.notes)+'</span>' : ''}</td>
+      <td title="${esc(e.file_path)}">${esc(e.file_name)}</td>
+      <td>${esc(e.sheet_name)}<br><code style="font-size:.8rem">${esc(e.cell_range)}</code></td>
+      <td>${e.dropdowns && e.dropdowns.length
+            ? e.dropdowns.map(d=>`<span class="badge badge-gray">${esc(d.cell)}=${esc(d.value)}</span>`).join(' ')
+            : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>${e.last_capture_time
+            ? `<span class="badge badge-green">${esc(e.last_capture_time)}</span>`
+            : '<span class="badge badge-gray">Never</span>'}</td>
+      <td>${e.last_capture_url
+            ? `<img class="thumb" src="${e.last_capture_url}?t=${Date.now()}" onclick="showImg('${e.last_capture_url}')" title="Click to enlarge"/>`
+            : '<div class="no-thumb">No image</div>'}</td>
+      <td>${e.pptx_file_name
+            ? `${esc(e.pptx_file_name)}<br><span style="font-size:.78rem;color:#6b7280">slide ${e.pptx_slide}</span>`
+            : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-outline" onclick="openEditModal('${e.id}')">Edit</button>
+          <button class="btn-outline" onclick="cloneEntry('${e.id}')">Clone</button>
+          <button class="btn-success" onclick="captureOne('${e.id}', '${esc(e.name)}')">Capture</button>
+          ${e.pptx_file && e.last_capture_path
+            ? `<button class="btn-warning" onclick="exportOne('${e.id}', '${esc(e.name)}')">→ PPT</button>`
+            : ''}
+          <button class="btn-danger" onclick="deleteEntry('${e.id}', '${esc(e.name)}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ─── Modal helpers ────────────────────────────────────────────────────────
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add Entry';
+  resetForm();
+  document.getElementById('entry-overlay').classList.add('open');
+}
+
+function openEditModal(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Entry';
+  populateForm(e);
+  document.getElementById('entry-overlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('entry-overlay').classList.remove('open');
+}
+
+function resetForm() {
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-file').value = '';
+  document.getElementById('f-sheet').innerHTML = '';
+  document.getElementById('f-range').value = '';
+  document.getElementById('f-notes').value = '';
+  document.getElementById('dd-body').innerHTML = '';
+  document.getElementById('f-pptx-file').value = '';
+  document.getElementById('pptx-info').textContent = '';
+  document.getElementById('f-slide').value = '1';
+  document.getElementById('f-left').value = '0.5';
+  document.getElementById('f-top').value = '0.5';
+  document.getElementById('f-width').value = '9.0';
+  document.getElementById('f-height').value = '6.5';
+}
+
+function populateForm(e) {
+  document.getElementById('f-name').value   = e.name;
+  document.getElementById('f-file').value   = e.file_path;
+  document.getElementById('f-range').value  = e.cell_range;
+  document.getElementById('f-notes').value  = e.notes || '';
+
+  // Sheets
+  const sel = document.getElementById('f-sheet');
+  sel.innerHTML = `<option value="${esc(e.sheet_name)}">${esc(e.sheet_name)}</option>`;
+  loadSheets(e.sheet_name);
+
+  // Dropdowns
+  const tbody = document.getElementById('dd-body');
+  tbody.innerHTML = '';
+  (e.dropdowns || []).forEach(d => addDdRow(d.cell, d.value));
+
+  // PPT
+  document.getElementById('f-pptx-file').value = e.pptx_file || '';
+  document.getElementById('f-slide').value     = e.pptx_slide || 1;
+  document.getElementById('f-left').value      = e.pptx_left  ?? 0.5;
+  document.getElementById('f-top').value       = e.pptx_top   ?? 0.5;
+  document.getElementById('f-width').value     = e.pptx_width ?? 9.0;
+  document.getElementById('f-height').value    = e.pptx_height ?? 6.5;
+  if (e.pptx_file) onPptxChanged();
+}
+
+// ─── Sheet loading ────────────────────────────────────────────────────────
+function scheduleSheetLoad() {
+  clearTimeout(sheetLoadTimer);
+  sheetLoadTimer = setTimeout(() => loadSheets(), 500);
+}
+
+async function loadSheets(preselect) {
+  const path = document.getElementById('f-file').value.trim();
+  if (!path) return;
+  try {
+    const res  = await fetch('/api/sheets?file_path=' + encodeURIComponent(path));
+    const data = await res.json();
+    const sel  = document.getElementById('f-sheet');
+    const sheets = data.sheets || [];
+    sel.innerHTML = sheets.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (preselect && sheets.includes(preselect)) sel.value = preselect;
+  } catch (_) {}
+}
+
+// ─── PPTX info ────────────────────────────────────────────────────────────
+let pptxInfoTimer = null;
+function onPptxChanged() {
+  clearTimeout(pptxInfoTimer);
+  pptxInfoTimer = setTimeout(async () => {
+    const path = document.getElementById('f-pptx-file').value.trim();
+    const el   = document.getElementById('pptx-info');
+    if (!path) { el.textContent = ''; return; }
+    try {
+      const res  = await fetch('/api/slide-info?pptx_path=' + encodeURIComponent(path));
+      const data = await res.json();
+      if (data.slide_count !== undefined)
+        el.textContent = `${data.slide_count} slide${data.slide_count !== 1 ? 's' : ''}`
+                       + `  (${data.width} × ${data.height} in)`;
+    } catch (_) {}
+  }, 600);
+}
+
+// ─── Dropdown table inside form ───────────────────────────────────────────
+function addDdRow(cell = '', value = '') {
+  const tbody = document.getElementById('dd-body');
+  const id    = 'dd-' + Math.random().toString(36).slice(2);
+  const tr    = document.createElement('tr');
+  tr.id = id;
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(cell)}" placeholder="B2"
+               style="width:70px;text-transform:uppercase" class="dd-cell"/></td>
+    <td><input type="text" value="${esc(value)}" placeholder="Q1" class="dd-val"/></td>
+    <td><button class="btn-danger" style="padding:3px 8px"
+                onclick="document.getElementById('${id}').remove()">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+function ddAdd() { addDdRow(); }
+
+function getDropdowns() {
+  return [...document.querySelectorAll('#dd-body tr')].map(tr => ({
+    cell:  tr.querySelector('.dd-cell').value.trim().toUpperCase(),
+    value: tr.querySelector('.dd-val').value.trim(),
+  })).filter(d => d.cell);
+}
+
+// ─── File browser helpers ─────────────────────────────────────────────────
+async function browseFile() {
+  const res  = await fetch('/api/browse?type=excel');
+  const data = await res.json();
+  if (data.path) {
+    document.getElementById('f-file').value = data.path;
+    scheduleSheetLoad();
+  }
+}
+async function browsePptx() {
+  const res  = await fetch('/api/browse?type=pptx');
+  const data = await res.json();
+  if (data.path) {
+    document.getElementById('f-pptx-file').value = data.path;
+    onPptxChanged();
+  }
+}
+
+// ─── Submit form ──────────────────────────────────────────────────────────
+async function submitEntry() {
+  const name      = document.getElementById('f-name').value.trim();
+  const file_path = document.getElementById('f-file').value.trim();
+  const sheet_name= document.getElementById('f-sheet').value.trim();
+  const cell_range= document.getElementById('f-range').value.trim().toUpperCase();
+  const notes     = document.getElementById('f-notes').value.trim();
+  const pptx_file = document.getElementById('f-pptx-file').value.trim();
+  const pptx_slide= parseInt(document.getElementById('f-slide').value) || 1;
+  const pptx_left = parseFloat(document.getElementById('f-left').value)  || 0.5;
+  const pptx_top  = parseFloat(document.getElementById('f-top').value)   || 0.5;
+  const pptx_width= parseFloat(document.getElementById('f-width').value) || 9.0;
+  const pptx_height=parseFloat(document.getElementById('f-height').value)|| 6.5;
+  const dropdowns = getDropdowns();
+
+  const errs = [];
+  if (!name)       errs.push('Name is required.');
+  if (!file_path)  errs.push('Excel file path is required.');
+  if (!sheet_name) errs.push('Sheet name is required.');
+  if (!cell_range) errs.push('Cell range is required.');
+  if (errs.length) { alert(errs.join('\n')); return; }
+
+  const payload = { name, file_path, sheet_name, cell_range, notes, dropdowns,
+                    pptx_file: pptx_file || null,
+                    pptx_slide, pptx_left, pptx_top, pptx_width, pptx_height };
+
+  const url    = editingId ? `/api/entries/${editingId}` : '/api/entries';
+  const method = editingId ? 'PUT' : 'POST';
+  const res    = await fetch(url, {
+    method, headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) { alert('Save failed: ' + (await res.text())); return; }
+  closeModal();
+  loadEntries();
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────────
+async function cloneEntry(id) {
+  await fetch(`/api/entries/${id}/clone`, { method: 'POST' });
+  loadEntries();
+}
+
+async function deleteEntry(id, name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  await fetch(`/api/entries/${id}`, { method: 'DELETE' });
+  loadEntries();
+}
+
+// ─── Capture / Export ─────────────────────────────────────────────────────
+function captureOne(id, name) {
+  openLog(`Capture: ${name}`);
+  fetch(`/api/entries/${id}/capture`, { method: 'POST' })
+    .then(r => r.json()).then(d => streamTask(d.task_id));
+}
+
+function captureAll() {
+  openLog('Capture All');
+  fetch('/api/capture-all', { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      if (d.error) { appendLog(d.error, 'err'); finishLog(d.error); return; }
+      streamTask(d.task_id);
+    });
+}
+
+function exportOne(id, name) {
+  openLog(`Export to PPT: ${name}`);
+  fetch(`/api/entries/${id}/export`, { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      if (d.error) { appendLog(d.error, 'err'); finishLog(d.error); return; }
+      streamTask(d.task_id);
+    });
+}
+
+function exportAll() {
+  openLog('Export All to PowerPoint');
+  fetch('/api/export-all', { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      if (d.error) { appendLog(d.error, 'err'); finishLog(d.error); return; }
+      streamTask(d.task_id);
+    });
+}
+
+// ─── Log panel ────────────────────────────────────────────────────────────
+function openLog(title) {
+  document.getElementById('log-title').textContent = title;
+  document.getElementById('log-body').innerHTML = '';
+  document.getElementById('log-status').textContent = 'Running…';
+  document.getElementById('log-close-btn').disabled = true;
+  document.getElementById('log-overlay').classList.add('open');
+}
+
+function appendLog(msg, level = 'info') {
+  const el   = document.getElementById('log-body');
+  const line = document.createElement('div');
+  line.className = 'l-' + level;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function finishLog(error) {
+  const statusEl = document.getElementById('log-status');
+  if (error) {
+    statusEl.textContent = 'Failed: ' + error;
+    statusEl.style.color = '#fca5a5';
+  } else {
+    statusEl.textContent = 'Done!';
+    statusEl.style.color = '#86efac';
+  }
+  document.getElementById('log-close-btn').disabled = false;
+  loadAll();   // refresh table and reports after task
+}
+
+function closeLog() {
+  document.getElementById('log-overlay').classList.remove('open');
+}
+
+function streamTask(taskId) {
+  const es = new EventSource(`/api/tasks/${taskId}/stream`);
+  es.onmessage = e => {
+    if (!e.data) return;
+    const item = JSON.parse(e.data);
+    if (item.done !== undefined) {
+      es.close();
+      finishLog(item.error || null);
+    } else if (item.msg !== undefined) {
+      appendLog(item.msg, item.level || 'info');
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    appendLog('Connection lost.', 'err');
+    finishLog('Connection lost');
+  };
+}
+
+// ─── Image preview ────────────────────────────────────────────────────────
+function showImg(url) {
+  document.getElementById('img-preview').src = url + '?t=' + Date.now();
+  document.getElementById('img-overlay').classList.add('open');
+}
+
+// ─── Power BI entries ─────────────────────────────────────────────────────
+let pbiEntries = [];
+let editingPbiId = null;
+
+async function loadPbiEntries() {
+  const res = await fetch('/api/pbi-entries');
+  pbiEntries = await res.json();
+  renderPbiTable();
+}
+
+function renderPbiTable() {
+  const tbody = document.getElementById('pbi-entries-body');
+  if (!pbiEntries.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No Power BI tasks yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = pbiEntries.map(e => `
+    <tr>
+      <td><strong>${esc(e.name)}</strong></td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${esc(e.url)}">${esc(e.url)}</td>
+      <td>${esc(e.report_page)||'—'}</td>
+      <td>${e.dropdowns.length||'—'}</td>
+      <td>${e.filters.length||'—'}</td>
+      <td>${e.buttons.length||'—'}</td>
+      <td>${e.last_capture_time
+            ? `<span class="badge badge-green">${esc(e.last_capture_time)}</span>`
+            : '<span class="badge badge-gray">Never</span>'}</td>
+      <td>${e.pptx_file_name
+            ? `${esc(e.pptx_file_name)}<br><span style="font-size:.78rem;color:#6b7280">slide ${e.pptx_slide}</span>`
+            : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-outline" onclick="openEditPbiModal('${e.id}')">Edit</button>
+          <button class="btn-outline" onclick="clonePbiEntry('${e.id}')">Clone</button>
+          <button class="btn-danger"  onclick="deletePbiEntry('${e.id}','${esc(e.name)}')">Delete</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openAddPbiModal() {
+  editingPbiId = null;
+  document.getElementById('pbi-modal-title').textContent = 'Add Power BI Task';
+  resetPbiForm();
+  document.getElementById('pbi-overlay').classList.add('open');
+}
+
+function openEditPbiModal(id) {
+  const e = pbiEntries.find(x => x.id === id);
+  if (!e) return;
+  editingPbiId = id;
+  document.getElementById('pbi-modal-title').textContent = 'Edit Power BI Task';
+  document.getElementById('p-name').value  = e.name;
+  document.getElementById('p-url').value   = e.url;
+  document.getElementById('p-page').value  = e.report_page || '';
+  document.getElementById('p-notes').value = e.notes || '';
+  document.getElementById('p-dd-body').innerHTML     = '';
+  document.getElementById('p-filter-body').innerHTML = '';
+  document.getElementById('p-btn-body').innerHTML    = '';
+  (e.dropdowns||[]).forEach(d => pbiDdAddRow('p-dd-body', d.label, d.value));
+  (e.filters||[]).forEach(f   => pbiDdAddRow('p-filter-body', f.name, f.value));
+  (e.buttons||[]).forEach(b   => pbiBtnAddRow(b.label));
+  document.getElementById('p-crop-enabled').checked   = !!e.crop_enabled;
+  document.getElementById('p-crop-fields').style.display = e.crop_enabled ? 'block' : 'none';
+  document.getElementById('p-crop-left').value   = e.crop_left   || 0;
+  document.getElementById('p-crop-top').value    = e.crop_top    || 0;
+  document.getElementById('p-crop-width').value  = e.crop_width  || 0;
+  document.getElementById('p-crop-height').value = e.crop_height || 0;
+  document.getElementById('p-pptx-file').value = e.pptx_file || '';
+  document.getElementById('p-slide').value  = e.pptx_slide  || 1;
+  document.getElementById('p-left').value   = e.pptx_left   ?? 0.5;
+  document.getElementById('p-top').value    = e.pptx_top    ?? 0.5;
+  document.getElementById('p-width').value  = e.pptx_width  ?? 9.0;
+  document.getElementById('p-height').value = e.pptx_height ?? 6.5;
+  if (e.pptx_file) onPbiPptxChanged();
+  document.getElementById('pbi-overlay').classList.add('open');
+}
+
+function closePbiModal() {
+  document.getElementById('pbi-overlay').classList.remove('open');
+}
+
+function toggleCropFields() {
+  const enabled = document.getElementById('p-crop-enabled').checked;
+  document.getElementById('p-crop-fields').style.display = enabled ? 'block' : 'none';
+}
+
+function resetPbiForm() {
+  ['p-name','p-url','p-page','p-notes','p-pptx-file'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('p-slide').value       = 1;
+  document.getElementById('p-left').value        = 0.5;
+  document.getElementById('p-top').value         = 0.5;
+  document.getElementById('p-width').value       = 9.0;
+  document.getElementById('p-height').value      = 6.5;
+  document.getElementById('p-pptx-info').textContent  = '';
+  document.getElementById('p-crop-enabled').checked   = false;
+  document.getElementById('p-crop-fields').style.display = 'none';
+  document.getElementById('p-crop-left').value   = 0;
+  document.getElementById('p-crop-top').value    = 0;
+  document.getElementById('p-crop-width').value  = 0;
+  document.getElementById('p-crop-height').value = 0;
+  ['p-dd-body','p-filter-body','p-btn-body'].forEach(id =>
+    document.getElementById(id).innerHTML = '');
+}
+
+// Generic two-column row (label/name + value)
+function pbiDdAddRow(tbodyId, col1='', col2='') {
+  const id  = 'pbi-' + Math.random().toString(36).slice(2);
+  const tr  = document.createElement('tr');
+  tr.id = id;
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(col1)}" style="width:100%" class="pbi-c1"/></td>
+    <td><input type="text" value="${esc(col2)}" style="width:100%" class="pbi-c2"/></td>
+    <td><button class="btn-danger" style="padding:3px 8px"
+                onclick="document.getElementById('${id}').remove()">✕</button></td>`;
+  document.getElementById(tbodyId).appendChild(tr);
+}
+function pbiDdAdd(tbodyId) { pbiDdAddRow(tbodyId); }
+
+// Single-column row (button label)
+function pbiBtnAddRow(label='') {
+  const id = 'pbibtn-' + Math.random().toString(36).slice(2);
+  const tr = document.createElement('tr');
+  tr.id = id;
+  tr.innerHTML = `
+    <td><input type="text" value="${esc(label)}" placeholder="Button label" style="width:100%" class="pbi-btn-label"/></td>
+    <td><button class="btn-danger" style="padding:3px 8px"
+                onclick="document.getElementById('${id}').remove()">✕</button></td>`;
+  document.getElementById('p-btn-body').appendChild(tr);
+}
+function pbiBtnAdd() { pbiBtnAddRow(); }
+
+function getPbiDropdowns() {
+  return [...document.querySelectorAll('#p-dd-body tr')].map(tr => ({
+    label: tr.querySelector('.pbi-c1').value.trim(),
+    value: tr.querySelector('.pbi-c2').value.trim(),
+  })).filter(d => d.label);
+}
+function getPbiFilters() {
+  return [...document.querySelectorAll('#p-filter-body tr')].map(tr => ({
+    name:  tr.querySelector('.pbi-c1').value.trim(),
+    value: tr.querySelector('.pbi-c2').value.trim(),
+  })).filter(f => f.name);
+}
+function getPbiButtons() {
+  return [...document.querySelectorAll('#p-btn-body tr')].map(tr => ({
+    label: tr.querySelector('.pbi-btn-label').value.trim(),
+  })).filter(b => b.label);
+}
+
+let pbiPptxInfoTimer = null;
+function onPbiPptxChanged() {
+  clearTimeout(pbiPptxInfoTimer);
+  pbiPptxInfoTimer = setTimeout(async () => {
+    const path = document.getElementById('p-pptx-file').value.trim();
+    const el   = document.getElementById('p-pptx-info');
+    if (!path) { el.textContent = ''; return; }
+    try {
+      const res  = await fetch('/api/slide-info?pptx_path=' + encodeURIComponent(path));
+      const data = await res.json();
+      if (data.slide_count !== undefined)
+        el.textContent = `${data.slide_count} slide${data.slide_count!==1?'s':''}  (${data.width} × ${data.height} in)`;
+    } catch(_) {}
+  }, 600);
+}
+async function browsePbiPptx() {
+  const res = await fetch('/api/browse?type=pptx');
+  const d   = await res.json();
+  if (d.path) { document.getElementById('p-pptx-file').value = d.path; onPbiPptxChanged(); }
+}
+
+async function submitPbi() {
+  const name      = document.getElementById('p-name').value.trim();
+  const url       = document.getElementById('p-url').value.trim();
+  const report_page = document.getElementById('p-page').value.trim();
+  const notes     = document.getElementById('p-notes').value.trim();
+  const pptx_file = document.getElementById('p-pptx-file').value.trim();
+  if (!name || !url) { alert('Name and URL are required.'); return; }
+
+  const payload = {
+    name, url, report_page, notes,
+    dropdowns:    getPbiDropdowns(),
+    filters:      getPbiFilters(),
+    buttons:      getPbiButtons(),
+    crop_enabled: document.getElementById('p-crop-enabled').checked,
+    crop_left:    parseInt(document.getElementById('p-crop-left').value)   || 0,
+    crop_top:     parseInt(document.getElementById('p-crop-top').value)    || 0,
+    crop_width:   parseInt(document.getElementById('p-crop-width').value)  || 0,
+    crop_height:  parseInt(document.getElementById('p-crop-height').value) || 0,
+    pptx_file:   pptx_file || null,
+    pptx_slide:  parseInt(document.getElementById('p-slide').value)  || 1,
+    pptx_left:   parseFloat(document.getElementById('p-left').value)  || 0.5,
+    pptx_top:    parseFloat(document.getElementById('p-top').value)   || 0.5,
+    pptx_width:  parseFloat(document.getElementById('p-width').value) || 9.0,
+    pptx_height: parseFloat(document.getElementById('p-height').value)|| 6.5,
+  };
+  const url2   = editingPbiId ? `/api/pbi-entries/${editingPbiId}` : '/api/pbi-entries';
+  const method = editingPbiId ? 'PUT' : 'POST';
+  const res = await fetch(url2, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!res.ok) { alert('Save failed: ' + await res.text()); return; }
+  closePbiModal();
+  loadPbiEntries();
+}
+
+async function clonePbiEntry(id) {
+  await fetch(`/api/pbi-entries/${id}/clone`, { method: 'POST' });
+  loadPbiEntries();
+}
+
+async function deletePbiEntry(id, name) {
+  if (!confirm(`Delete Power BI task "${name}"?`)) return;
+  await fetch(`/api/pbi-entries/${id}`, { method: 'DELETE' });
+  loadPbiEntries();
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────
+async function loadReports() {
+  const res = await fetch('/api/reports');
+  reports = await res.json();
+  renderReports();
+}
+
+function renderReports() {
+  const grid = document.getElementById('reports-grid');
+  if (!reports.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:40px 0">No reports yet. Click "+ New Report" to create one.</div>';
+    return;
+  }
+  grid.innerHTML = reports.map(r => {
+    const taskRows = (r.task_details || []).map(t => {
+      const isExcel = t.type === 'excel';
+      const sub     = isExcel
+        ? `${esc(t.sheet_name)} · ${esc(t.cell_range)}`
+        : `${esc(t.report_page || '')}`;
+      return `
+      <li style="flex-direction:column;align-items:flex-start;gap:2px">
+        <div style="display:flex;align-items:center;gap:6px;width:100%">
+          <span class="entry-dot ${t.last_capture_time ? 'captured' : ''}"></span>
+          <span class="type-badge ${isExcel ? 'type-excel' : 'type-powerbi'}">${isExcel ? 'XLS' : 'PBI'}</span>
+          <span style="font-weight:600;flex:1">${esc(t.name)}</span>
+          <span style="color:#9ca3af;font-size:.75rem">${sub}</span>
+        </div>
+        ${t.pptx_file_name ? `
+        <div style="padding-left:14px;font-size:.75rem;color:#6b7280">
+          → ${esc(t.pptx_file_name)} &nbsp;·&nbsp; Slide ${t.pptx_slide}
+        </div>` : ''}
+      </li>`;
+    }).join('');
+    const pptCount = (r.task_details||[]).filter(t => t.pptx_file).length;
+    return `
+    <div class="report-card">
+      <div class="report-card-header">
+        <div class="report-card-title">${esc(r.name)}</div>
+        <span class="badge badge-gray">${(r.task_details||[]).length} task${(r.task_details||[]).length!==1?'s':''}</span>
+        ${pptCount ? `<span class="badge badge-green">${pptCount} PPT</span>` : ''}
+      </div>
+      ${r.notes ? `<div class="report-card-notes">${esc(r.notes)}</div>` : ''}
+      <ul class="report-entry-list">
+        ${taskRows || '<li style="color:#9ca3af;font-size:.82rem">No tasks</li>'}
+      </ul>
+      <div class="report-actions">
+        <button class="btn-success" onclick="runReport('${r.id}','${esc(r.name)}')">▶ Run</button>
+        <button class="btn-outline" onclick="openEditReportModal('${r.id}')">Edit</button>
+        <button class="btn-danger"  onclick="deleteReport('${r.id}','${esc(r.name)}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Report modal ─────────────────────────────────────────────────────────
+function openAddReportModal() {
+  editingReportId = null;
+  document.getElementById('report-modal-title').textContent = 'New Report';
+  document.getElementById('r-name').value  = '';
+  document.getElementById('r-notes').value = '';
+  renderReportEntryList([]);
+  document.getElementById('report-overlay').classList.add('open');
+}
+
+function openEditReportModal(id) {
+  const r = reports.find(x => x.id === id);
+  if (!r) return;
+  editingReportId = id;
+  document.getElementById('report-modal-title').textContent = 'Edit Report';
+  document.getElementById('r-name').value  = r.name;
+  document.getElementById('r-notes').value = r.notes || '';
+  renderReportEntryList(r.tasks || []);
+  document.getElementById('report-overlay').classList.add('open');
+}
+
+function closeReportModal() {
+  document.getElementById('report-overlay').classList.remove('open');
+}
+
+function renderReportEntryList(selectedTasks) {
+  // selectedTasks: [{type, id}, ...]
+  const container = document.getElementById('r-entry-list');
+  const allTasks  = [
+    ...entries.map(e     => ({ type: 'excel',   id: e.id,   name: e.name,   sub: `${e.file_name} · ${e.sheet_name} · ${e.cell_range}` })),
+    ...pbiEntries.map(e  => ({ type: 'powerbi', id: e.id,   name: e.name,   sub: e.report_page || e.url })),
+  ];
+  if (!allTasks.length) {
+    container.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:.82rem">No tasks yet. Add Excel or Power BI tasks first.</div>';
+    return;
+  }
+
+  const key      = t => `${t.type}::${t.id}`;
+  const selKeys  = new Set(selectedTasks.map(key));
+
+  // Selected tasks in their current order, then unselected
+  const selList  = selectedTasks.map(s => allTasks.find(t => t.type===s.type && t.id===s.id)).filter(Boolean);
+  const unselList= allTasks.filter(t => !selKeys.has(key(t)));
+  const ordered  = [...selList, ...unselList];
+
+  container.innerHTML = ordered.map(t => {
+    const checked   = selKeys.has(key(t));
+    const badgeCls  = t.type === 'excel' ? 'type-excel' : 'type-powerbi';
+    const badgeTxt  = t.type === 'excel' ? 'XLS' : 'PBI';
+    return `
+    <div class="r-entry-row" data-type="${t.type}" data-id="${t.id}" data-sel="${checked}"
+         style="display:flex;align-items:center;gap:8px;padding:7px 10px;
+                border-bottom:1px solid #f3f4f6;background:${checked?'#f0f9ff':'#fff'}">
+      <input type="checkbox" ${checked?'checked':''}
+             onchange="toggleReportTask('${t.type}','${t.id}',this.checked)"/>
+      <span class="type-badge ${badgeCls}">${badgeTxt}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:.85rem">${esc(t.name)}</div>
+        <div style="font-size:.75rem;color:#9ca3af">${esc(t.sub)}</div>
+      </div>
+      ${checked ? `
+      <button class="btn-outline" style="padding:2px 7px;font-size:.75rem"
+              onclick="moveReportTask('${t.type}','${t.id}',-1)">↑</button>
+      <button class="btn-outline" style="padding:2px 7px;font-size:.75rem"
+              onclick="moveReportTask('${t.type}','${t.id}',1)">↓</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function _getReportTasks() {
+  return [...document.querySelectorAll('#r-entry-list .r-entry-row')]
+    .filter(r => r.dataset.sel === 'true')
+    .map(r => ({ type: r.dataset.type, id: r.dataset.id }));
+}
+
+function toggleReportTask(type, id, checked) {
+  const current = _getReportTasks();
+  const next = checked
+    ? [...current, { type, id }]
+    : current.filter(t => !(t.type === type && t.id === id));
+  renderReportEntryList(next);
+}
+
+function moveReportTask(type, id, dir) {
+  const tasks = _getReportTasks();
+  const i     = tasks.findIndex(t => t.type === type && t.id === id);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= tasks.length) return;
+  [tasks[i], tasks[j]] = [tasks[j], tasks[i]];
+  renderReportEntryList(tasks);
+}
+
+async function submitReport() {
+  const name  = document.getElementById('r-name').value.trim();
+  const notes = document.getElementById('r-notes').value.trim();
+  const tasks = _getReportTasks();
+  if (!name) { alert('Report name is required.'); return; }
+
+  const url    = editingReportId ? `/api/reports/${editingReportId}` : '/api/reports';
+  const method = editingReportId ? 'PUT' : 'POST';
+  const res = await fetch(url, {
+    method, headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, notes, tasks }),
+  });
+  if (!res.ok) { alert('Save failed: ' + await res.text()); return; }
+  closeReportModal();
+  loadReports();
+}
+
+async function deleteReport(id, name) {
+  if (!confirm(`Delete report "${name}"?`)) return;
+  await fetch(`/api/reports/${id}`, { method: 'DELETE' });
+  loadReports();
+}
+
+function runReport(id, name) {
+  openLog(`Run Report: ${name}`);
+  fetch(`/api/reports/${id}/run`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { appendLog(d.error, 'err'); finishLog(d.error); return; }
+      streamTask(d.task_id);
+    });
+}
+
+// ─── Range picker ─────────────────────────────────────────────────────────
+let _pickerSession = null;
+let _pickerES      = null;
+
+async function openRangePicker() {
+  const filePath  = document.getElementById('f-file').value.trim();
+  const sheetName = document.getElementById('f-sheet').value.trim();
+  if (!filePath) { alert('Select an Excel file first.'); return; }
+
+  // Reset picker UI
+  document.getElementById('picker-range').textContent  = 'Opening Excel…';
+  document.getElementById('picker-sheet').textContent  = '';
+  document.getElementById('picker-confirm-btn').disabled = true;
+  document.getElementById('picker-overlay').classList.add('open');
+
+  const res = await fetch('/api/pick-range/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ file_path: filePath, sheet_name: sheetName }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    document.getElementById('picker-range').textContent = data.error || 'Failed to open Excel';
+    return;
+  }
+
+  _pickerSession = data.session_id;
+  document.getElementById('picker-range').textContent = 'Select a range in Excel…';
+
+  // Start SSE stream
+  _pickerES = new EventSource(`/api/pick-range/${_pickerSession}/stream`);
+  _pickerES.onmessage = e => {
+    if (!e.data || e.data.trim() === '') return;
+    const item = JSON.parse(e.data);
+    if (item.done) {
+      _pickerES.close(); _pickerES = null; return;
+    }
+    if (item.error) {
+      _pickerES.close(); _pickerES = null;
+      document.getElementById('picker-range').textContent = '⚠ ' + item.error;
+      document.getElementById('picker-range').style.color = '#fca5a5';
+      return;
+    }
+    if (item.poll_err) {
+      // Show non-fatal poll errors under the range
+      document.getElementById('picker-sheet').textContent = '⚠ ' + item.poll_err;
+      document.getElementById('picker-sheet').style.color = '#fca5a5';
+      return;
+    }
+    if (item.waiting) {
+      document.getElementById('picker-range').textContent = 'Opening Excel…';
+      return;
+    }
+    if (item.range) {
+      document.getElementById('picker-sheet').textContent = item.sheet ? `Sheet: ${item.sheet}` : '';
+      document.getElementById('picker-sheet').style.color = '#fbbf24';
+      document.getElementById('picker-range').textContent = item.range;
+      document.getElementById('picker-range').style.color = '#86efac';
+      document.getElementById('picker-confirm-btn').disabled = false;
+    }
+  };
+  _pickerES.onerror = () => {
+    if (_pickerES) { _pickerES.close(); _pickerES = null; }
+  };
+}
+
+async function confirmRangePicker() {
+  if (!_pickerSession) return;
+  const sid = _pickerSession;
+  _pickerSession = null;
+  if (_pickerES) { _pickerES.close(); _pickerES = null; }
+
+  const res  = await fetch(`/api/pick-range/${sid}/stop`, { method: 'POST' });
+  const data = await res.json();
+
+  if (data.range) {
+    document.getElementById('f-range').value = data.range;
+    // Also update sheet dropdown if sheet changed
+    if (data.sheet) {
+      const sel = document.getElementById('f-sheet');
+      const opts = [...sel.options].map(o => o.value);
+      if (opts.includes(data.sheet)) {
+        sel.value = data.sheet;
+      } else {
+        // Reload sheets and select the new one
+        await loadSheets(data.sheet);
+      }
+    }
+  }
+  document.getElementById('picker-overlay').classList.remove('open');
+}
+
+async function cancelRangePicker() {
+  if (_pickerES) { _pickerES.close(); _pickerES = null; }
+  if (_pickerSession) {
+    const sid = _pickerSession;
+    _pickerSession = null;
+    await fetch(`/api/pick-range/${sid}/stop`, { method: 'POST' }).catch(() => {});
+  }
+  document.getElementById('picker-overlay').classList.remove('open');
+}
+
+// ─── Utility ──────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

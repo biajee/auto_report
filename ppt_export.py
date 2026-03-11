@@ -7,9 +7,10 @@ Requirements:
 
 from __future__ import annotations
 
+import io
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 
 class PPTExportError(Exception):
@@ -28,19 +29,23 @@ class PPTExporter:
     def paste_image(
         self,
         pptx_path: str,
-        slide_number: int,   # 1-based
-        image_path: str,
-        left: float,         # inches
-        top: float,          # inches
-        width: float,        # inches
-        height: float,       # inches
+        slide_number: int,                    # 1-based
+        image_source: Union[str, io.BytesIO], # file path OR in-memory bytes
+        left: float,                          # inches
+        top: float,
+        width: float,
+        height: float,
     ) -> None:
         """
-        Insert *image_path* on slide *slide_number* of *pptx_path* at the
-        given position/size (inches), then save the file in place.
+        Insert an image on slide *slide_number* of *pptx_path*.
+
+        *image_source* can be:
+          - a file path (str) – read from disk
+          - an io.BytesIO   – pasted directly from memory (clipboard capture)
         """
         self._check_exists(pptx_path, "PowerPoint file")
-        self._check_exists(image_path, "Screenshot")
+        if isinstance(image_source, str):
+            self._check_exists(image_source, "Screenshot")
 
         prs = self._open(pptx_path)
         n = len(prs.slides)
@@ -53,7 +58,7 @@ class PPTExporter:
             from pptx.util import Inches  # noqa: PLC0415
             slide = prs.slides[slide_number - 1]
             slide.shapes.add_picture(
-                image_path,
+                image_source,
                 Inches(left), Inches(top),
                 Inches(width), Inches(height),
             )
@@ -72,7 +77,7 @@ class PPTExporter:
         opened and saved only once.
 
         Each job dict must have keys:
-            pptx_path, slide_number, image_path,
+            pptx_path, slide_number, image_source (str path OR io.BytesIO),
             left, top, width, height, entry (the Entry object for reporting)
 
         Returns list of (job, error_message_or_None).
@@ -114,10 +119,14 @@ class PPTExporter:
                     results.append((j, msg))
                     continue
                 try:
-                    self._check_exists(j["image_path"], "Screenshot")
+                    img_src = j["image_source"]
+                    if isinstance(img_src, str):
+                        self._check_exists(img_src, "Screenshot")
+                    elif hasattr(img_src, "seek"):
+                        img_src.seek(0)   # rewind BytesIO before use
                     slide = prs.slides[sn - 1]
                     slide.shapes.add_picture(
-                        j["image_path"],
+                        img_src,
                         Inches(j["left"]), Inches(j["top"]),
                         Inches(j["width"]), Inches(j["height"]),
                     )

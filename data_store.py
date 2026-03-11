@@ -1,5 +1,5 @@
 """
-data_store.py – Persistent storage for Excel range entries.
+data_store.py – Persistent storage for entries (Excel & Power BI) and reports.
 Uses a local JSON file; no database required.
 """
 
@@ -11,6 +11,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+
+# ---------------------------------------------------------------------------
+# Excel entry
+# ---------------------------------------------------------------------------
 
 @dataclass
 class Entry:
@@ -34,31 +38,13 @@ class Entry:
     pptx_width: float = 9.0
     pptx_height: float = 6.5
 
-    # ------------------------------------------------------------------
-    # Factory
-    # ------------------------------------------------------------------
-
     @classmethod
-    def create(
-        cls,
-        name: str,
-        file_path: str,
-        sheet_name: str,
-        cell_range: str,
-        notes: str = "",
-    ) -> "Entry":
+    def create(cls, name, file_path, sheet_name, cell_range, notes="") -> "Entry":
         return cls(
             id=str(uuid.uuid4()),
-            name=name,
-            file_path=file_path,
-            sheet_name=sheet_name,
-            cell_range=cell_range,
-            notes=notes,
+            name=name, file_path=file_path,
+            sheet_name=sheet_name, cell_range=cell_range, notes=notes,
         )
-
-    # ------------------------------------------------------------------
-    # Display helpers
-    # ------------------------------------------------------------------
 
     def display_file(self) -> str:
         return Path(self.file_path).name if self.file_path else ""
@@ -75,19 +61,95 @@ class Entry:
         return f"{Path(self.pptx_file).name}  sl.{self.pptx_slide}"
 
 
-class DataStore:
-    """Load / save entries to a JSON file atomically."""
+# ---------------------------------------------------------------------------
+# Power BI entry
+# ---------------------------------------------------------------------------
 
-    _VERSION = 1
+@dataclass
+class PowerBIEntry:
+    """
+    A screenshot task targeting a Power BI report page in a browser.
+
+    Interactions applied before the screenshot is taken:
+      dropdowns – list of {"label": "Region",  "value": "Asia"}
+      filters   – list of {"name":  "Year",    "value": "2024"}
+      buttons   – list of {"label": "Apply"}
+    """
+    id: str
+    name: str
+    url: str
+    report_page: str = ""
+    notes: str = ""
+
+    # Interactions (ordered – applied top to bottom)
+    dropdowns: list = field(default_factory=list)
+    filters:   list = field(default_factory=list)
+    buttons:   list = field(default_factory=list)
+
+    # Crop region applied after screenshot (pixels; all 0 = no crop)
+    crop_enabled: bool = False
+    crop_left:    int  = 0
+    crop_top:     int  = 0
+    crop_width:   int  = 0   # 0 = full width from crop_left
+    crop_height:  int  = 0   # 0 = full height from crop_top
+
+    # Capture results
+    last_capture_path: Optional[str] = None
+    last_capture_time: Optional[str] = None
+
+    # PowerPoint destination
+    pptx_file:   Optional[str] = None
+    pptx_slide:  int   = 1
+    pptx_left:   float = 0.5
+    pptx_top:    float = 0.5
+    pptx_width:  float = 9.0
+    pptx_height: float = 6.5
+
+    @classmethod
+    def create(cls, name: str, url: str, report_page: str = "",
+               notes: str = "") -> "PowerBIEntry":
+        return cls(id=str(uuid.uuid4()), name=name, url=url,
+                   report_page=report_page, notes=notes)
+
+
+# ---------------------------------------------------------------------------
+# Report  (ordered mix of Excel and Power BI tasks)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Report:
+    """
+    A named, ordered group of tasks that run together as one operation.
+
+    tasks – ordered list of {"type": "excel"|"powerbi", "id": "<entry id>"}
+    """
+    id: str
+    name: str
+    tasks: List[dict] = field(default_factory=list)
+    notes: str = ""
+
+    @classmethod
+    def create(cls, name: str, notes: str = "") -> "Report":
+        return cls(id=str(uuid.uuid4()), name=name, notes=notes)
+
+
+# ---------------------------------------------------------------------------
+# DataStore
+# ---------------------------------------------------------------------------
+
+class DataStore:
+    """Load / save all data to a single JSON file atomically."""
+
+    _VERSION = 3
 
     def __init__(self, data_file: str = "entries.json") -> None:
         self._path = Path(data_file)
-        self._entries: List[Entry] = []
+        self._entries:     List[Entry]       = []
+        self._pbi_entries: List[PowerBIEntry] = []
+        self._reports:     List[Report]      = []
         self._load()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # ── Excel entries ──────────────────────────────────────────────────────
 
     @property
     def entries(self) -> List[Entry]:
@@ -110,17 +172,75 @@ class DataStore:
         self._entries = [e for e in self._entries if e.id != entry_id]
         if len(self._entries) == before:
             raise KeyError(f"Entry not found: {entry_id}")
+        self._remove_task_from_reports("excel", entry_id)
         self._save()
 
     def get(self, entry_id: str) -> Optional[Entry]:
-        for e in self._entries:
-            if e.id == entry_id:
-                return e
-        return None
+        return next((e for e in self._entries if e.id == entry_id), None)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
+    # ── Power BI entries ───────────────────────────────────────────────────
+
+    @property
+    def pbi_entries(self) -> List[PowerBIEntry]:
+        return list(self._pbi_entries)
+
+    def add_pbi(self, entry: PowerBIEntry) -> None:
+        self._pbi_entries.append(entry)
+        self._save()
+
+    def update_pbi(self, entry: PowerBIEntry) -> None:
+        for i, e in enumerate(self._pbi_entries):
+            if e.id == entry.id:
+                self._pbi_entries[i] = entry
+                self._save()
+                return
+        raise KeyError(f"PowerBIEntry not found: {entry.id}")
+
+    def delete_pbi(self, entry_id: str) -> None:
+        before = len(self._pbi_entries)
+        self._pbi_entries = [e for e in self._pbi_entries if e.id != entry_id]
+        if len(self._pbi_entries) == before:
+            raise KeyError(f"PowerBIEntry not found: {entry_id}")
+        self._remove_task_from_reports("powerbi", entry_id)
+        self._save()
+
+    def get_pbi(self, entry_id: str) -> Optional[PowerBIEntry]:
+        return next((e for e in self._pbi_entries if e.id == entry_id), None)
+
+    # ── Reports ────────────────────────────────────────────────────────────
+
+    @property
+    def reports(self) -> List[Report]:
+        return list(self._reports)
+
+    def add_report(self, report: Report) -> None:
+        self._reports.append(report)
+        self._save()
+
+    def update_report(self, report: Report) -> None:
+        for i, r in enumerate(self._reports):
+            if r.id == report.id:
+                self._reports[i] = report
+                self._save()
+                return
+        raise KeyError(f"Report not found: {report.id}")
+
+    def delete_report(self, report_id: str) -> None:
+        before = len(self._reports)
+        self._reports = [r for r in self._reports if r.id != report_id]
+        if len(self._reports) == before:
+            raise KeyError(f"Report not found: {report_id}")
+        self._save()
+
+    def get_report(self, report_id: str) -> Optional[Report]:
+        return next((r for r in self._reports if r.id == report_id), None)
+
+    # ── Private ────────────────────────────────────────────────────────────
+
+    def _remove_task_from_reports(self, task_type: str, task_id: str) -> None:
+        for r in self._reports:
+            r.tasks = [t for t in r.tasks
+                       if not (t.get("type") == task_type and t.get("id") == task_id)]
 
     def _load(self) -> None:
         if not self._path.exists():
@@ -128,18 +248,39 @@ class DataStore:
         try:
             with open(self._path, "r", encoding="utf-8") as fh:
                 raw = json.load(fh)
+
             self._entries = [Entry(**item) for item in raw.get("entries", [])]
+            self._pbi_entries = [PowerBIEntry(**item)
+                                 for item in raw.get("pbi_entries", [])]
+
+            # Migrate old report format (entry_ids / pbi_entry_ids → tasks)
+            reports = []
+            for item in raw.get("reports", []):
+                if "tasks" not in item:
+                    tasks = (
+                        [{"type": "excel",   "id": i} for i in item.get("entry_ids", [])] +
+                        [{"type": "powerbi", "id": i} for i in item.get("pbi_entry_ids", [])]
+                    )
+                    item = {k: v for k, v in item.items()
+                            if k not in ("entry_ids", "pbi_entry_ids")}
+                    item["tasks"] = tasks
+                reports.append(Report(**item))
+            self._reports = reports
+
         except Exception as exc:
             print(f"[DataStore] Could not load {self._path}: {exc}")
             self._entries = []
+            self._pbi_entries = []
+            self._reports = []
 
     def _save(self) -> None:
         payload = {
-            "version": self._VERSION,
-            "entries": [asdict(e) for e in self._entries],
+            "version":     self._VERSION,
+            "entries":     [asdict(e) for e in self._entries],
+            "pbi_entries": [asdict(e) for e in self._pbi_entries],
+            "reports":     [asdict(r) for r in self._reports],
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        # Write to a temp file then rename for atomicity
         tmp = self._path.with_suffix(".tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, ensure_ascii=False)

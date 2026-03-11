@@ -7,10 +7,11 @@ Requirements:
 
 from __future__ import annotations
 
+import io
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 
 class CaptureError(Exception):
@@ -39,33 +40,40 @@ class ExcelCapture:
         name: str,
         dropdowns: Optional[list] = None,
         log: Optional[Callable] = None,
-    ) -> str:
+    ) -> Tuple[str, io.BytesIO]:
         """
         Open the Excel file, optionally set dropdown cell values and
-        recalculate, then copy *cell_range* as a bitmap PNG.
+        recalculate, then copy *cell_range* via CopyPicture (clipboard).
 
-        *dropdowns* is a list of {"cell": "B2", "value": "Q1"} dicts.
-        Excel only recalculates if at least one value actually changed.
+        Returns (png_path, image_bytes) where:
+          - png_path    is the saved PNG file path (for preview thumbnail)
+          - image_bytes is a BytesIO of the image (for direct PPT paste,
+                        no disk read-back required)
 
-        *log(msg, level)* is called with progress messages.
-        level is one of: "info", "ok", "err", "dim", "head".
-
-        Returns the absolute path of the saved PNG.
         Raises CaptureError on any failure.
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe = "".join(c for c in name if c.isalnum() or c in " -_").strip() or "capture"
         out_path = self.output_dir / f"{safe}_{timestamp}.png"
 
-        self._capture_via_com(
+        img = self._capture_via_com(
             str(Path(file_path).resolve()),
             sheet_name,
             cell_range.upper(),
-            str(out_path),
             dropdowns or [],
             log or _Noop,
         )
-        return str(out_path)
+
+        # Save PNG for preview thumbnail
+        img.save(str(out_path), "PNG")
+        log(f"Saved  {out_path.name}", "ok")
+
+        # Also return image as BytesIO for direct PPT paste (no file read-back)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        buf.seek(0)
+
+        return str(out_path), buf
 
     @staticmethod
     def get_sheet_names(file_path: str) -> List[str]:
@@ -105,10 +113,9 @@ class ExcelCapture:
         abs_path: str,
         sheet_name: str,
         cell_range: str,
-        out_path: str,
         dropdowns: list,
         log: Callable,
-    ) -> None:
+    ):
         try:
             import win32com.client  # noqa: PLC0415
         except ImportError:
@@ -167,9 +174,8 @@ class ExcelCapture:
                     "Clipboard empty after CopyPicture — range may be empty."
                 )
 
-            img.save(out_path, "PNG")
-            log(f"Saved  {Path(out_path).name}", "ok")
             wb.Close(SaveChanges=False)
+            return img
 
         except CaptureError:
             raise
