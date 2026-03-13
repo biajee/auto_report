@@ -34,7 +34,7 @@ from flask import (
 )
 
 from capture import CaptureError, ExcelCapture
-from data_store import DataStore, Entry, PowerBIEntry, Report
+from data_store import DataStore, ExcelTask, PowerBIEntry, Report
 from ppt_export import PPTExportError, PPTExporter
 
 # ---------------------------------------------------------------------------
@@ -50,11 +50,11 @@ SCREENSHOTS_DIR = Path("screenshots")
 SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Background task registry  (task_id -> {"status", "log", "done", "error"})
+# Background job registry  (job_id -> {"status", "log", "done", "error"})
 # ---------------------------------------------------------------------------
 
-_tasks: dict[str, dict] = {}
-_tasks_lock = threading.Lock()
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Range-picker session registry
@@ -65,22 +65,22 @@ _pick_sessions: dict[str, dict] = {}
 _pick_lock = threading.Lock()
 
 
-def _new_task() -> str:
+def _new_job() -> str:
     tid = str(uuid.uuid4())
-    with _tasks_lock:
-        _tasks[tid] = {"log": [], "done": False, "error": None}
+    with _jobs_lock:
+        _jobs[tid] = {"log": [], "done": False, "error": None}
     return tid
 
 
-def _task_log(tid: str, msg: str, level: str = "info") -> None:
-    with _tasks_lock:
-        _tasks[tid]["log"].append({"msg": msg, "level": level})
+def _job_log(tid: str, msg: str, level: str = "info") -> None:
+    with _jobs_lock:
+        _jobs[tid]["log"].append({"msg": msg, "level": level})
 
 
-def _task_done(tid: str, error: str | None = None) -> None:
-    with _tasks_lock:
-        _tasks[tid]["done"] = True
-        _tasks[tid]["error"] = error
+def _job_done(tid: str, error: str | None = None) -> None:
+    with _jobs_lock:
+        _jobs[tid]["done"] = True
+        _jobs[tid]["error"] = error
 
 
 # ---------------------------------------------------------------------------
@@ -104,20 +104,20 @@ def screenshot(filename: str):
 
 
 # ---------------------------------------------------------------------------
-# Routes – entries CRUD
+# Routes – Excel tasks CRUD
 # ---------------------------------------------------------------------------
 
 
-@app.route("/api/entries", methods=["GET"])
-def list_entries():
-    return jsonify([_entry_dict(e) for e in store.entries])
+@app.route("/api/tasks", methods=["GET"])
+def list_tasks():
+    return jsonify([_task_dict(e) for e in store.tasks])
 
 
-@app.route("/api/entries", methods=["POST"])
-def create_entry():
+@app.route("/api/tasks", methods=["POST"])
+def create_task():
     data = request.json or {}
     try:
-        e = Entry.create(
+        e = ExcelTask.create(
             name=data["name"],
             file_path=data["file_path"],
             sheet_name=data["sheet_name"],
@@ -131,19 +131,20 @@ def create_entry():
         e.pptx_top    = float(data.get("pptx_top", 0.5))
         e.pptx_width  = float(data.get("pptx_width", 9.0))
         e.pptx_height = float(data.get("pptx_height", 6.5))
-        store.add(e)
-        return jsonify(_entry_dict(e)), 201
+        e.pptx_output = data.get("pptx_output") or None
+        store.add_task(e)
+        return jsonify(_task_dict(e)), 201
     except KeyError as exc:
         return jsonify({"error": f"Missing field: {exc}"}), 400
 
 
-@app.route("/api/entries/<entry_id>", methods=["PUT"])
-def update_entry(entry_id: str):
-    e = store.get(entry_id)
+@app.route("/api/tasks/<task_id>", methods=["PUT"])
+def update_task(task_id: str):
+    e = store.get_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
     data = request.json or {}
-    updated = Entry(
+    updated = ExcelTask(
         id=e.id,
         name=data.get("name", e.name),
         file_path=data.get("file_path", e.file_path),
@@ -159,23 +160,24 @@ def update_entry(entry_id: str):
         pptx_top=float(data.get("pptx_top", e.pptx_top)),
         pptx_width=float(data.get("pptx_width", e.pptx_width)),
         pptx_height=float(data.get("pptx_height", e.pptx_height)),
+        pptx_output=data.get("pptx_output") or None,
     )
-    store.update(updated)
-    return jsonify(_entry_dict(updated))
+    store.update_task(updated)
+    return jsonify(_task_dict(updated))
 
 
-@app.route("/api/entries/<entry_id>", methods=["DELETE"])
-def delete_entry(entry_id: str):
+@app.route("/api/tasks/<task_id>", methods=["DELETE"])
+def delete_task(task_id: str):
     try:
-        store.delete(entry_id)
+        store.delete_task(task_id)
         return "", 204
     except KeyError:
         return jsonify({"error": "Not found"}), 404
 
 
-@app.route("/api/entries/<entry_id>/clone", methods=["POST"])
-def clone_entry(entry_id: str):
-    e = store.get(entry_id)
+@app.route("/api/tasks/<task_id>/clone", methods=["POST"])
+def clone_task(task_id: str):
+    e = store.get_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
     from dataclasses import replace
@@ -183,8 +185,8 @@ def clone_entry(entry_id: str):
                      name=f"Copy of {e.name}",
                      last_capture_path=None,
                      last_capture_time=None)
-    store.add(cloned)
-    return jsonify(_entry_dict(cloned)), 201
+    store.add_task(cloned)
+    return jsonify(_task_dict(cloned)), 201
 
 
 # ---------------------------------------------------------------------------
@@ -361,6 +363,21 @@ def pick_range_stop(sid: str):
     return jsonify(last)
 
 
+@app.route("/api/range-size", methods=["GET"])
+def get_range_size():
+    """Return the pixel width/height (in points) of an Excel cell range."""
+    file_path  = request.args.get("file_path",  "")
+    sheet_name = request.args.get("sheet_name", "")
+    cell_range = request.args.get("cell_range", "")
+    if not file_path or not sheet_name or not cell_range:
+        return jsonify({"error": "file_path, sheet_name, cell_range required"}), 400
+    try:
+        w, h = ExcelCapture.get_range_size(file_path, sheet_name, cell_range)
+        return jsonify({"width": w, "height": h})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/sheets", methods=["GET"])
 def get_sheets():
     file_path = request.args.get("file_path", "")
@@ -384,16 +401,16 @@ def get_slide_info():
 # ---------------------------------------------------------------------------
 
 
-@app.route("/api/entries/<entry_id>/capture", methods=["POST"])
-def capture_entry(entry_id: str):
-    e = store.get(entry_id)
+@app.route("/api/tasks/<task_id>/capture", methods=["POST"])
+def capture_task(task_id: str):
+    e = store.get_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
-    tid = _new_task()
+    tid = _new_job()
 
     def run():
         from datetime import datetime
-        log = lambda msg, level="info": _task_log(tid, msg, level)
+        log = lambda msg, level="info": _job_log(tid, msg, level)
         try:
             path, buf = capturer.capture(
                 e.file_path, e.sheet_name, e.cell_range, e.name,
@@ -401,25 +418,27 @@ def capture_entry(entry_id: str):
             )
             e.last_capture_path = path
             e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            store.update(e)
+            store.update_task(e)
 
             # If a PPT destination is configured, paste directly from the
             # in-memory buffer (clipboard image) — no file read-back needed
             if e.pptx_file:
-                log(f"Pasting → {Path(e.pptx_file).name}  slide {e.pptx_slide}", "info")
+                out_name = Path(e.pptx_output).name if e.pptx_output else Path(e.pptx_file).name
+                log(f"Pasting → {out_name}  slide {e.pptx_slide}", "info")
                 exporter.paste_image(
                     e.pptx_file, e.pptx_slide, buf,
                     e.pptx_left, e.pptx_top, e.pptx_width, e.pptx_height,
+                    output_path=e.pptx_output,
                 )
                 log(f"Pasted to slide {e.pptx_slide}", "ok")
 
-            _task_done(tid)
+            _job_done(tid)
         except (CaptureError, PPTExportError) as exc:
             log(str(exc), "err")
-            _task_done(tid, str(exc))
+            _job_done(tid, str(exc))
         except Exception as exc:
             log(f"Unexpected error: {exc}", "err")
-            _task_done(tid, str(exc))
+            _job_done(tid, str(exc))
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
@@ -427,19 +446,19 @@ def capture_entry(entry_id: str):
 
 @app.route("/api/capture-all", methods=["POST"])
 def capture_all():
-    entries = store.entries
-    if not entries:
-        return jsonify({"error": "No entries"}), 400
-    tid = _new_task()
+    excel_tasks = store.tasks
+    if not excel_tasks:
+        return jsonify({"error": "No tasks"}), 400
+    tid = _new_job()
 
     def run():
         from datetime import datetime
-        log = lambda msg, level="info": _task_log(tid, msg, level)
+        log = lambda msg, level="info": _job_log(tid, msg, level)
 
-        # Group entries by PPT file so each PPTX is opened/saved only once
+        # Group tasks by PPT file so each PPTX is opened/saved only once
         ppt_jobs: list = []
 
-        for e in entries:
+        for e in excel_tasks:
             log(f"── {e.name}", "head")
             try:
                 path, buf = capturer.capture(
@@ -448,7 +467,7 @@ def capture_all():
                 )
                 e.last_capture_path = path
                 e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                store.update(e)
+                store.update_task(e)
 
                 if e.pptx_file:
                     ppt_jobs.append({
@@ -460,6 +479,7 @@ def capture_all():
                         "width":        e.pptx_width,
                         "height":       e.pptx_height,
                         "entry":        e,
+                        "output_path":  e.pptx_output,
                     })
             except CaptureError as exc:
                 log(str(exc), "err")
@@ -470,14 +490,14 @@ def capture_all():
                 results = exporter.paste_batch(ppt_jobs, log=log)
                 errors = [err for _, err in results if err]
                 if errors:
-                    _task_done(tid, "\n".join(errors))
+                    _job_done(tid, "\n".join(errors))
                     return
             except PPTExportError as exc:
                 log(str(exc), "err")
-                _task_done(tid, str(exc))
+                _job_done(tid, str(exc))
                 return
 
-        _task_done(tid)
+        _job_done(tid)
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
@@ -488,33 +508,35 @@ def capture_all():
 # ---------------------------------------------------------------------------
 
 
-@app.route("/api/entries/<entry_id>/export", methods=["POST"])
-def export_entry(entry_id: str):
+@app.route("/api/tasks/<task_id>/export", methods=["POST"])
+def export_task(task_id: str):
     """Re-export using the saved PNG (for when you want to re-paste without recapturing)."""
-    e = store.get(entry_id)
+    e = store.get_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
     if not e.pptx_file:
         return jsonify({"error": "No PowerPoint destination set"}), 400
     if not e.last_capture_path:
         return jsonify({"error": "No screenshot captured yet — capture first"}), 400
-    tid = _new_task()
+    tid = _new_job()
 
     def run():
         try:
-            _task_log(tid, f"Exporting '{e.name}' → slide {e.pptx_slide}", "info")
+            _job_log(tid, f"Exporting '{e.name}' → slide {e.pptx_slide}", "info")
             exporter.paste_image(
                 e.pptx_file, e.pptx_slide, e.last_capture_path,
                 e.pptx_left, e.pptx_top, e.pptx_width, e.pptx_height,
+                output_path=e.pptx_output,
             )
-            _task_log(tid, f"Saved {Path(e.pptx_file).name}", "ok")
-            _task_done(tid)
+            out_name = Path(e.pptx_output).name if e.pptx_output else Path(e.pptx_file).name
+            _job_log(tid, f"Saved {out_name}", "ok")
+            _job_done(tid)
         except PPTExportError as exc:
-            _task_log(tid, str(exc), "err")
-            _task_done(tid, str(exc))
+            _job_log(tid, str(exc), "err")
+            _job_done(tid, str(exc))
         except Exception as exc:
-            _task_log(tid, f"Unexpected error: {exc}", "err")
-            _task_done(tid, str(exc))
+            _job_log(tid, f"Unexpected error: {exc}", "err")
+            _job_done(tid, str(exc))
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
@@ -522,11 +544,11 @@ def export_entry(entry_id: str):
 
 @app.route("/api/export-all", methods=["POST"])
 def export_all():
-    """Re-export all entries using their saved PNGs."""
-    entries = [e for e in store.entries if e.pptx_file and e.last_capture_path]
-    if not entries:
-        return jsonify({"error": "No entries with both a screenshot and a PPT destination"}), 400
-    tid = _new_task()
+    """Re-export all tasks using their saved PNGs."""
+    excel_tasks = [e for e in store.tasks if e.pptx_file and e.last_capture_path]
+    if not excel_tasks:
+        return jsonify({"error": "No tasks with both a screenshot and a PPT destination"}), 400
+    tid = _new_job()
 
     def run():
         jobs = [
@@ -539,25 +561,26 @@ def export_all():
                 "width":        e.pptx_width,
                 "height":       e.pptx_height,
                 "entry":        e,
+                "output_path":  e.pptx_output,
             }
-            for e in entries
+            for e in excel_tasks
         ]
         try:
             results = exporter.paste_batch(
-                jobs, log=lambda msg, level="info": _task_log(tid, msg, level),
+                jobs, log=lambda msg, level="info": _job_log(tid, msg, level),
             )
             errors = [err for _, err in results if err]
-            _task_done(tid, "\n".join(errors) if errors else None)
+            _job_done(tid, "\n".join(errors) if errors else None)
         except PPTExportError as exc:
-            _task_log(tid, str(exc), "err")
-            _task_done(tid, str(exc))
+            _job_log(tid, str(exc), "err")
+            _job_done(tid, str(exc))
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
 
 
 # ---------------------------------------------------------------------------
-# Routes – Power BI entries CRUD + stub capture
+# Routes – Power BI tasks CRUD + stub capture
 # ---------------------------------------------------------------------------
 
 
@@ -589,6 +612,8 @@ def _pbi_dict(e: PowerBIEntry) -> dict:
         "pptx_top":       e.pptx_top,
         "pptx_width":     e.pptx_width,
         "pptx_height":    e.pptx_height,
+        "pptx_output":      e.pptx_output,
+        "pptx_output_name": Path(e.pptx_output).name if e.pptx_output else "",
     }
 
 
@@ -617,46 +642,47 @@ def _pbi_from_data(data: dict, existing: PowerBIEntry = None) -> PowerBIEntry:
         pptx_top     = _f("pptx_top",   0.5),
         pptx_width   = _f("pptx_width", 9.0),
         pptx_height  = _f("pptx_height",6.5),
+        pptx_output  = data.get("pptx_output") or None,
     )
 
 
-@app.route("/api/pbi-entries", methods=["GET"])
-def list_pbi_entries():
-    return jsonify([_pbi_dict(e) for e in store.pbi_entries])
+@app.route("/api/pbi-tasks", methods=["GET"])
+def list_pbi_tasks():
+    return jsonify([_pbi_dict(e) for e in store.pbi_tasks])
 
 
-@app.route("/api/pbi-entries", methods=["POST"])
-def create_pbi_entry():
+@app.route("/api/pbi-tasks", methods=["POST"])
+def create_pbi_task():
     data = request.json or {}
     if not data.get("name") or not data.get("url"):
         return jsonify({"error": "name and url are required"}), 400
     e = _pbi_from_data(data)
-    store.add_pbi(e)
+    store.add_pbi_task(e)
     return jsonify(_pbi_dict(e)), 201
 
 
-@app.route("/api/pbi-entries/<entry_id>", methods=["PUT"])
-def update_pbi_entry(entry_id: str):
-    existing = store.get_pbi(entry_id)
+@app.route("/api/pbi-tasks/<task_id>", methods=["PUT"])
+def update_pbi_task(task_id: str):
+    existing = store.get_pbi_task(task_id)
     if not existing:
         return jsonify({"error": "Not found"}), 404
     updated = _pbi_from_data(request.json or {}, existing)
-    store.update_pbi(updated)
+    store.update_pbi_task(updated)
     return jsonify(_pbi_dict(updated))
 
 
-@app.route("/api/pbi-entries/<entry_id>", methods=["DELETE"])
-def delete_pbi_entry(entry_id: str):
+@app.route("/api/pbi-tasks/<task_id>", methods=["DELETE"])
+def delete_pbi_task(task_id: str):
     try:
-        store.delete_pbi(entry_id)
+        store.delete_pbi_task(task_id)
         return "", 204
     except KeyError:
         return jsonify({"error": "Not found"}), 404
 
 
-@app.route("/api/pbi-entries/<entry_id>/clone", methods=["POST"])
-def clone_pbi_entry(entry_id: str):
-    e = store.get_pbi(entry_id)
+@app.route("/api/pbi-tasks/<task_id>/clone", methods=["POST"])
+def clone_pbi_task(task_id: str):
+    e = store.get_pbi_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
     from dataclasses import replace
@@ -664,27 +690,27 @@ def clone_pbi_entry(entry_id: str):
                      name=f"Copy of {e.name}",
                      last_capture_path=None,
                      last_capture_time=None)
-    store.add_pbi(cloned)
+    store.add_pbi_task(cloned)
     return jsonify(_pbi_dict(cloned)), 201
 
 
-@app.route("/api/pbi-entries/<entry_id>/capture", methods=["POST"])
-def capture_pbi_entry(entry_id: str):
+@app.route("/api/pbi-tasks/<task_id>/capture", methods=["POST"])
+def capture_pbi_task(task_id: str):
     """Stub — replace body with real Power BI capture when ready."""
-    e = store.get_pbi(entry_id)
+    e = store.get_pbi_task(task_id)
     if not e:
         return jsonify({"error": "Not found"}), 404
-    tid = _new_task()
+    tid = _new_job()
 
     def run():
-        log = lambda msg, level="info": _task_log(tid, msg, level)
+        log = lambda msg, level="info": _job_log(tid, msg, level)
         log(f"Power BI capture: {e.name}", "head")
         log(f"URL: {e.url}", "info")
         if e.report_page:
             log(f"Page: {e.report_page}", "info")
         # ── placeholder – user will supply real implementation ──────────
         log("Power BI capture not yet implemented.", "err")
-        _task_done(tid, "Not implemented")
+        _job_done(tid, "Not implemented")
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
@@ -701,11 +727,11 @@ def _report_dict(r: Report) -> dict:
         kind = t.get("type")
         tid  = t.get("id")
         if kind == "excel":
-            e = store.get(tid)
+            e = store.get_task(tid)
             if e:
-                tasks_out.append({"type": "excel",   **_entry_dict(e)})
+                tasks_out.append({"type": "excel",   **_task_dict(e)})
         elif kind == "powerbi":
-            e = store.get_pbi(tid)
+            e = store.get_pbi_task(tid)
             if e:
                 tasks_out.append({"type": "powerbi", **_pbi_dict(e)})
     return {
@@ -761,11 +787,11 @@ def run_report(report_id: str):
     if not r.tasks:
         return jsonify({"error": "Report has no tasks"}), 400
 
-    tid = _new_task()
+    tid = _new_job()
 
     def run():
         from datetime import datetime
-        log      = lambda msg, level="info": _task_log(tid, msg, level)
+        log      = lambda msg, level="info": _job_log(tid, msg, level)
         ppt_jobs: list = []
 
         for task in r.tasks:
@@ -774,9 +800,9 @@ def run_report(report_id: str):
 
             # ── Excel ────────────────────────────────────────────────────
             if kind == "excel":
-                e = store.get(task_id)
+                e = store.get_task(task_id)
                 if not e:
-                    log(f"Excel entry {task_id} not found — skipped", "err")
+                    log(f"Excel task {task_id} not found — skipped", "err")
                     continue
                 log(f"── [Excel] {e.name}", "head")
                 try:
@@ -786,7 +812,7 @@ def run_report(report_id: str):
                     )
                     e.last_capture_path = path
                     e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    store.update(e)
+                    store.update_task(e)
                     if e.pptx_file:
                         ppt_jobs.append({
                             "pptx_path":    e.pptx_file,
@@ -795,15 +821,16 @@ def run_report(report_id: str):
                             "left": e.pptx_left, "top":    e.pptx_top,
                             "width": e.pptx_width, "height": e.pptx_height,
                             "entry": e,
+                            "output_path":  e.pptx_output,
                         })
                 except CaptureError as exc:
                     log(str(exc), "err")
 
             # ── Power BI ─────────────────────────────────────────────────
             elif kind == "powerbi":
-                e = store.get_pbi(task_id)
+                e = store.get_pbi_task(task_id)
                 if not e:
-                    log(f"Power BI entry {task_id} not found — skipped", "err")
+                    log(f"Power BI task {task_id} not found — skipped", "err")
                     continue
                 log(f"── [Power BI] {e.name}", "head")
                 # ── placeholder: call real PBI capture here ───────────────
@@ -818,43 +845,294 @@ def run_report(report_id: str):
                 results = exporter.paste_batch(ppt_jobs, log=log)
                 errors  = [err for _, err in results if err]
                 if errors:
-                    _task_done(tid, "\n".join(errors))
+                    _job_done(tid, "\n".join(errors))
                     return
             except PPTExportError as exc:
                 log(str(exc), "err")
-                _task_done(tid, str(exc))
+                _job_done(tid, str(exc))
                 return
 
-        _task_done(tid)
+        _job_done(tid)
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"task_id": tid}), 202
 
 
 # ---------------------------------------------------------------------------
-# Routes – task polling (Server-Sent Events)
+# Routes – PPT position picker
+# (session: start → stream SSE → [goto] → stop)
+# ---------------------------------------------------------------------------
+
+_ppt_pick_sessions: dict[str, dict] = {}
+_ppt_pick_lock = threading.Lock()
+
+
+@app.route("/api/ppt-pick/start", methods=["POST"])
+def ppt_pick_start():
+    data        = request.json or {}
+    pptx_file   = data.get("pptx_file", "").strip()
+    slide_num   = int(data.get("slide_number", 1))
+    init_left   = float(data.get("left",   0.5))
+    init_top    = float(data.get("top",    0.5))
+    init_width  = float(data.get("width",  9.0))
+    init_height = float(data.get("height", 6.5))
+
+    if not pptx_file:
+        return jsonify({"error": "pptx_file required"}), 400
+    abs_path = str(Path(pptx_file).resolve())
+    if not Path(abs_path).exists():
+        return jsonify({"error": f"File not found: {pptx_file}"}), 400
+
+    sid        = str(uuid.uuid4())
+    stop_event = threading.Event()
+    cmdq: queue.Queue = queue.Queue()
+    state: dict = {
+        "status":    "starting",
+        "cur_slide": slide_num,
+        "total":     0,
+        "left":      init_left,
+        "top":       init_top,
+        "width":     init_width,
+        "height":    init_height,
+        "error":     None,
+    }
+
+    def worker() -> None:
+        _PTS = 72.0
+
+        def _style(s) -> None:
+            s.Name = "_img_placeholder_"
+            s.Line.ForeColor.RGB = 255 + 140 * 256
+            s.Line.Weight = 2.5
+            s.Line.DashStyle = 2
+            s.Fill.ForeColor.RGB = 255 + 165 * 256
+            s.Fill.Transparency = 0.75
+            tf = s.TextFrame
+            tf.TextRange.Text = "IMAGE PLACEHOLDER\nMove & resize to set position"
+            tf.TextRange.Font.Size = 12
+            tf.TextRange.Font.Bold = True
+            tf.TextRange.Font.Color.RGB = 255 + 69 * 256
+            tf.VerticalAnchor = 3
+            tf.TextRange.ParagraphFormat.Alignment = 2
+
+        ppt = shape = prs = None
+        try:
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+            try:
+                import win32com.client
+            except ImportError:
+                state["status"] = "error"
+                state["error"]  = "pywin32 not installed. Run: pip install pywin32"
+                return
+
+            # GetObject returns the already-open presentation regardless of
+            # which PowerPoint instance holds it.  If the file isn't open yet
+            # it opens it in an existing or new instance automatically.
+            try:
+                prs = win32com.client.GetObject(abs_path)
+                ppt = prs.Application
+            except Exception:
+                prs = None
+                ppt = None
+
+            if prs is None:
+                # File not open yet — attach to a running instance or start one
+                try:
+                    ppt = win32com.client.GetActiveObject("PowerPoint.Application")
+                except Exception:
+                    ppt = win32com.client.Dispatch("PowerPoint.Application")
+                    ppt.DisplayAlerts = 0
+                prs = ppt.Presentations.Open(abs_path, ReadOnly=False)
+
+            ppt.Visible = True
+
+            n_slides = prs.Slides.Count
+            cur      = min(max(1, slide_num), n_slides)
+            P        = _PTS
+
+            slide = prs.Slides(cur)
+            prs.Windows(1).View.GotoSlide(cur)
+            try:
+                ppt.ActiveWindow.Activate()
+            except Exception:
+                pass
+
+            shape = slide.Shapes.AddShape(
+                1, init_left * P, init_top * P, init_width * P, init_height * P
+            )
+            _style(shape)
+            state.update({"status": "ready", "cur_slide": cur, "total": n_slides})
+
+            while not stop_event.is_set():
+                # handle goto commands
+                try:
+                    while True:
+                        cmd, arg = cmdq.get_nowait()
+                        if cmd == "goto":
+                            target = min(max(1, arg), n_slides)
+                            if target != cur:
+                                try:
+                                    gl = shape.Left;  gt = shape.Top
+                                    gw = shape.Width; gh = shape.Height
+                                    shape.Delete()
+                                except Exception:
+                                    gl = init_left  * P; gt = init_top    * P
+                                    gw = init_width * P; gh = init_height * P
+                                cur   = target
+                                slide = prs.Slides(cur)
+                                prs.Windows(1).View.GotoSlide(cur)
+                                shape = slide.Shapes.AddShape(1, gl, gt, gw, gh)
+                                _style(shape)
+                                state["cur_slide"] = cur
+                except queue.Empty:
+                    pass
+
+                # poll position
+                try:
+                    state.update({
+                        "left":   round(shape.Left   / P, 3),
+                        "top":    round(shape.Top    / P, 3),
+                        "width":  round(shape.Width  / P, 3),
+                        "height": round(shape.Height / P, 3),
+                    })
+                except Exception:
+                    pass
+
+                stop_event.wait(0.4)
+
+        except Exception as exc:
+            state["status"] = "error"
+            state["error"]  = str(exc)
+        finally:
+            state["status"] = "done"
+            # Remove the placeholder shape but leave PowerPoint open
+            try:
+                if shape:
+                    shape.Delete()
+            except Exception:
+                pass
+            try:
+                import pythoncom
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    with _ppt_pick_lock:
+        _ppt_pick_sessions[sid] = {
+            "state":      state,
+            "stop_event": stop_event,
+            "cmdq":       cmdq,
+            "thread":     t,
+        }
+    return jsonify({"session_id": sid}), 202
+
+
+@app.route("/api/ppt-pick/<sid>/stream")
+def ppt_pick_stream(sid: str):
+    """SSE: send position/slide updates until done or cancelled."""
+    import time
+
+    def generate() -> Iterator[str]:
+        last_payload = None
+        while True:
+            with _ppt_pick_lock:
+                session = _ppt_pick_sessions.get(sid)
+            if session is None:
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
+            state  = session["state"]
+            status = state.get("status", "starting")
+
+            if status == "error":
+                yield f"data: {json.dumps({'error': state.get('error', 'Unknown')})}\n\n"
+                return
+            if status in ("ready", "done"):
+                payload = {
+                    "cur_slide": state["cur_slide"],
+                    "total":     state["total"],
+                    "left":      state["left"],
+                    "top":       state["top"],
+                    "width":     state["width"],
+                    "height":    state["height"],
+                    "status":    status,
+                }
+                if payload != last_payload:
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    last_payload = dict(payload)
+                else:
+                    yield ": keep-alive\n\n"
+                if status == "done":
+                    return
+            else:
+                yield f"data: {json.dumps({'waiting': True})}\n\n"
+            time.sleep(0.4)
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/ppt-pick/<sid>/goto", methods=["POST"])
+def ppt_pick_goto(sid: str):
+    with _ppt_pick_lock:
+        session = _ppt_pick_sessions.get(sid)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    slide = int((request.json or {}).get("slide", 1))
+    session["cmdq"].put(("goto", slide))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ppt-pick/<sid>/stop", methods=["POST"])
+def ppt_pick_stop(sid: str):
+    with _ppt_pick_lock:
+        session = _ppt_pick_sessions.pop(sid, None)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    session["stop_event"].set()
+    try:
+        session["thread"].join(timeout=8)
+    except Exception:
+        pass
+    s = session["state"]
+    return jsonify({
+        "slide":  s["cur_slide"],
+        "left":   s["left"],
+        "top":    s["top"],
+        "width":  s["width"],
+        "height": s["height"],
+    })
+
+
+# ---------------------------------------------------------------------------
+# Routes – job polling (Server-Sent Events)
 # ---------------------------------------------------------------------------
 
 
-@app.route("/api/tasks/<task_id>/stream")
-def task_stream(task_id: str):
-    """SSE endpoint — streams log lines until the task completes."""
+@app.route("/api/jobs/<job_id>/stream")
+def job_stream(job_id: str):
+    """SSE endpoint — streams log lines until the background job completes."""
 
     def generate() -> Iterator[str]:
         sent = 0
         while True:
-            with _tasks_lock:
-                task = _tasks.get(task_id)
-            if task is None:
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if job is None:
                 yield "data: {}\n\n"
                 return
-            logs = task["log"]
+            logs = job["log"]
             while sent < len(logs):
                 item = logs[sent]
                 yield f"data: {json.dumps(item)}\n\n"
                 sent += 1
-            if task["done"]:
-                yield f"data: {json.dumps({'done': True, 'error': task['error']})}\n\n"
+            if job["done"]:
+                yield f"data: {json.dumps({'done': True, 'error': job['error']})}\n\n"
                 return
             import time
             time.sleep(0.3)
@@ -863,13 +1141,13 @@ def task_stream(task_id: str):
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.route("/api/tasks/<task_id>", methods=["GET"])
-def task_status(task_id: str):
-    with _tasks_lock:
-        task = _tasks.get(task_id)
-    if task is None:
+@app.route("/api/jobs/<job_id>", methods=["GET"])
+def job_status(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if job is None:
         return jsonify({"error": "Not found"}), 404
-    return jsonify(task)
+    return jsonify(job)
 
 
 # ---------------------------------------------------------------------------
@@ -877,7 +1155,7 @@ def task_status(task_id: str):
 # ---------------------------------------------------------------------------
 
 
-def _entry_dict(e: Entry) -> dict:
+def _task_dict(e: ExcelTask) -> dict:
     d = {
         "id":                e.id,
         "name":              e.name,
@@ -897,6 +1175,8 @@ def _entry_dict(e: Entry) -> dict:
         "pptx_top":          e.pptx_top,
         "pptx_width":        e.pptx_width,
         "pptx_height":       e.pptx_height,
+        "pptx_output":       e.pptx_output,
+        "pptx_output_name":  Path(e.pptx_output).name if e.pptx_output else "",
     }
     if e.last_capture_path and Path(e.last_capture_path).exists():
         d["last_capture_url"] = "/screenshots/" + Path(e.last_capture_path).name

@@ -35,6 +35,7 @@ class PPTExporter:
         top: float,
         width: float,
         height: float,
+        output_path: Optional[str] = None,
     ) -> None:
         """
         Insert an image on slide *slide_number* of *pptx_path*.
@@ -67,7 +68,7 @@ class PPTExporter:
         except Exception as exc:
             raise PPTExportError(f"Cannot add picture to slide: {exc}") from exc
 
-        self._save(prs, pptx_path)
+        self._save(prs, output_path or pptx_path)
 
     def paste_batch(
         self, jobs: List[dict], log=None
@@ -91,17 +92,17 @@ class PPTExporter:
 
         _log = log or (lambda msg, level="info": None)
 
-        # Group by file so each PPTX is opened/saved only once
-        by_file: Dict[str, List[dict]] = defaultdict(list)
+        # Group by (template_path, save_path) so each PPTX is opened/saved only once
+        by_file: Dict[tuple, List[dict]] = defaultdict(list)
         for job in jobs:
-            by_file[job["pptx_path"]].append(job)
+            by_file[(job["pptx_path"], job.get("output_path") or job["pptx_path"])].append(job)
 
         results = []
-        for pptx_path, file_jobs in by_file.items():
-            _log(f"Opening  {Path(pptx_path).name}", "info")
+        for (template_path, save_path), file_jobs in by_file.items():
+            _log(f"Opening  {Path(template_path).name}", "info")
             try:
-                self._check_exists(pptx_path, "PowerPoint file")
-                prs = self._open(pptx_path)
+                self._check_exists(template_path, "PowerPoint file")
+                prs = self._open(template_path)
                 n = len(prs.slides)
             except PPTExportError as exc:
                 _log(f"Cannot open: {exc}", "err")
@@ -112,7 +113,7 @@ class PPTExporter:
             for j in file_jobs:
                 sn = j["slide_number"]
                 entry = j.get("entry")
-                label = entry.name if entry else pptx_path
+                label = entry.name if entry else template_path
                 if not (1 <= sn <= n):
                     msg = f"Slide {sn} does not exist (file has {n})."
                     _log(f"  ✗ {label}: {msg}", "err")
@@ -137,9 +138,9 @@ class PPTExporter:
                     results.append((j, str(exc)))
 
             try:
-                _log(f"Saving  {Path(pptx_path).name}…", "info")
-                self._save(prs, pptx_path)
-                _log(f"Saved  {Path(pptx_path).name}", "ok")
+                _log(f"Saving  {Path(save_path).name}…", "info")
+                self._save(prs, save_path)
+                _log(f"Saved  {Path(save_path).name}", "ok")
             except PPTExportError as exc:
                 _log(f"Save failed: {exc}", "err")
                 for j in file_jobs:

@@ -1,212 +1,91 @@
 {
   "version": 3,
-  "entries": [
+  "tasks": [
     {
-      "id": "dc00642e-0120-4eab-949d-f936e6a08b88",
-      "name": "test1",
-      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
-      "sheet_name": "CP18 State Server",
-      "cell_range": "C13:I24",
-      "last_capture_path": "screenshots\\test1_20260311_134819.png",
-      "last_capture_time": "2026-03-11 13:48:20",
-      "notes": "",
-      "dropdowns": [],
-      "pptx_file": "D:/code/auto_report/deck.pptx",
-      "pptx_slide": 2,
-      "pptx_left": 0.5,
-      "pptx_top": 0.5,
-      "pptx_width": 2.98,
-      "pptx_height": 5.52
-    },
-    {
-      "id": "4c5cc34e-3416-4feb-a1fa-b40fff18ea01",
-      "name": "test2",
-      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
-      "sheet_name": "CP18 State Server",
-      "cell_range": "B12:J24",
-      "last_capture_path": "screenshots\\test2_20260311_134820.png",
-      "last_capture_time": "2026-03-11 13:48:21",
-      "notes": "",
-      "dropdowns": [],
-      "pptx_file": "D:/code/auto_report/deck.pptx",
-      "pptx_slide": 1,
-      "pptx_left": 6.13,
-      "pptx_top": 1.47,
-      "pptx_width": 5.99,
-      "pptx_height": 3.67
-    },
-    {
-      "id": "4457495e-d5cd-4595-8c70-765aeba10750",
-      "name": "test3",
-      "file_path": "D:/code/auto_report/CP18 State Server.xlsx",
-      "sheet_name": "CP18 State Server",
-      "cell_range": "B8:L31",
-      "last_capture_path": "screenshots\\test3_20260311_134821.png",
-      "last_capture_time": "2026-03-11 13:48:24",
-      "notes": "",
-      "dropdowns": [
-        {
-          "cell": "N2",
-          "value": "Open"
-        }
-      ],
-      "pptx_file": "D:/code/auto_report/deck.pptx",
-      "pptx_slide": 2,
-      "pptx_left": 0.5,
-      "pptx_top": 0.5,
-      "pptx_width": 11.94,
-      "pptx_height": 6.12
-    },
-    {
-      "id": "79eaff88-2234-4c99-8249-eba993a20190",
-      "name": "test5",
+      "id": "a23b447d-880b-4fd5-8c33-2f0a75c97223",
+      "name": "ABC Competition",
       "file_path": "D:/code/auto_report/CP18 State Temp.xlsx",
       "sheet_name": "CP18 State Temp",
-      "cell_range": "J1662:M1727",
-      "last_capture_path": "screenshots\\test5_20260311_131410.png",
-      "last_capture_time": "2026-03-11 13:14:13",
+      "cell_range": "A1658:M2044",
+      "last_capture_path": "screenshots\\ABC Competition_20260313_115609.png",
+      "last_capture_time": "2026-03-13 11:56:12",
       "notes": "",
       "dropdowns": [],
       "pptx_file": "D:/code/auto_report/deck.pptx",
       "pptx_slide": 1,
-      "pptx_left": 0.5,
-      "pptx_top": 0.5,
-      "pptx_width": 2.0,
-      "pptx_height": 2.0
-    }
-  ],
-  "pbi_entries": [
-    {
-      "id": "e6c6f2da-40fd-43c3-86ab-1946405a64a8",
-      "name": "p3 big 3",
-      "url": "https://app.powerbi.com/discover/gallery/653426d8-503a-4a10-8a02-71854968d73a?experience=power-bi",
-      "report_page": "Dimension View",
-      "notes": "",
-      "dropdowns": [
-        {
-          "label": "Quarter",
-          "value": "FY26 Q3 QTD"
-        },
-        {
-          "label": "MWKJ",
-          "value": "WOMENS|MENS"
-        },
-        {
-          "label": "Sport",
-          "value": "\\.^KIDS (?!NIKE SPORTSWARE|JORDAN)(.*)"
-        }
-      ],
-      "filters": [
-        {
-          "name": "CORE",
-          "value": "CORE"
-        }
-      ],
-      "buttons": [
-        {
-          "label": "Sport"
-        }
-      ],
-      "crop_enabled": true,
-      "crop_left": 0,
-      "crop_top": 100,
-      "crop_width": 12,
-      "crop_height": 0,
-      "last_capture_path": null,
-      "last_capture_time": null,
-      "pptx_file": "D:/code/auto_report/deck.pptx",
-      "pptx_slide": 2,
-      "pptx_left": 0.5,
-      "pptx_top": 0.5,
-      "pptx_width": 9.0,
-      "pptx_height": 6.5
+      "pptx_left": 0.75,
+      "pptx_top": 2.1,
+      "pptx_width": 11.83,
+      "pptx_height": 2.2,
+      "pptx_output": null
     },
     {
-      "id": "9b709730-267b-459f-860f-017688cbc731",
-      "name": "Copy of test2",
-      "url": "https://app.powerbi.com/discover/gallery/653426d8-503a-4a10-8a02-71854968d73a?experience=power-bi",
-      "report_page": "Dimension View",
-      "notes": "",
-      "dropdowns": [
-        {
-          "label": "Quarter",
-          "value": "FY26 Q3 QTD"
-        },
-        {
-          "label": "MWKJ",
-          "value": "WOMENS|MENS"
-        },
-        {
-          "label": "Sport",
-          "value": "\\.^KIDS (?!NIKE SPORTSWARE|JORDAN)(.*)"
-        }
-      ],
-      "filters": [],
-      "buttons": [],
-      "crop_enabled": true,
-      "crop_left": 0,
-      "crop_top": 100,
-      "crop_width": 12,
-      "crop_height": 0,
+      "id": "31f05e38-7b67-48f6-9979-18932595658b",
+      "name": "P2 ABC Competition",
+      "file_path": "D:/code/auto_report/CP18 State Temp.xlsx",
+      "sheet_name": "CP18 State Temp",
+      "cell_range": "A1658:M2044",
       "last_capture_path": null,
       "last_capture_time": null,
+      "notes": "",
+      "dropdowns": [],
       "pptx_file": "D:/code/auto_report/deck.pptx",
-      "pptx_slide": 2,
-      "pptx_left": 0.5,
-      "pptx_top": 0.5,
-      "pptx_width": 9.0,
-      "pptx_height": 6.5
+      "pptx_slide": 1,
+      "pptx_left": 0.75,
+      "pptx_top": 2.35,
+      "pptx_width": 11.83,
+      "pptx_height": 2.2,
+      "pptx_output": null
+    },
+    {
+      "id": "af04f665-f6c1-4391-85bf-1367a2607d74",
+      "name": "Copy of P2 ABC Competition",
+      "file_path": "D:/code/auto_report/CP18 State Temp.xlsx",
+      "sheet_name": "CP18 State Temp",
+      "cell_range": "A1658:M2044",
+      "last_capture_path": null,
+      "last_capture_time": null,
+      "notes": "",
+      "dropdowns": [],
+      "pptx_file": "D:/code/auto_report/deck.pptx",
+      "pptx_slide": 1,
+      "pptx_left": 0.66,
+      "pptx_top": 1.98,
+      "pptx_width": 11.83,
+      "pptx_height": 2.2,
+      "pptx_output": null
+    },
+    {
+      "id": "1f850950-faf1-40c9-81ed-5e816bfdb5f1",
+      "name": "Copy of Copy of P2 ABC Competition",
+      "file_path": "D:/code/auto_report/CP18 State Temp.xlsx",
+      "sheet_name": "CP18 State Temp",
+      "cell_range": "A1658:M2044",
+      "last_capture_path": "screenshots\\Copy of Copy of P2 ABC Competition_20260313_122359.png",
+      "last_capture_time": "2026-03-13 12:24:02",
+      "notes": "",
+      "dropdowns": [],
+      "pptx_file": "D:/code/auto_report/deck.pptx",
+      "pptx_slide": 1,
+      "pptx_left": 0.75,
+      "pptx_top": 2.9,
+      "pptx_width": 11.83,
+      "pptx_height": 2.2,
+      "pptx_output": "D:/code/auto_report/deck_report.pptx"
     }
   ],
+  "pbi_tasks": [],
   "reports": [
     {
       "id": "83a189c9-05ce-470a-a992-4bee9354e04a",
       "name": "Report2",
-      "tasks": [
-        {
-          "type": "excel",
-          "id": "dc00642e-0120-4eab-949d-f936e6a08b88"
-        },
-        {
-          "type": "excel",
-          "id": "4c5cc34e-3416-4feb-a1fa-b40fff18ea01"
-        },
-        {
-          "type": "excel",
-          "id": "4457495e-d5cd-4595-8c70-765aeba10750"
-        },
-        {
-          "type": "excel",
-          "id": "79eaff88-2234-4c99-8249-eba993a20190"
-        },
-        {
-          "type": "powerbi",
-          "id": "e6c6f2da-40fd-43c3-86ab-1946405a64a8"
-        },
-        {
-          "type": "powerbi",
-          "id": "9b709730-267b-459f-860f-017688cbc731"
-        }
-      ],
+      "tasks": [],
       "notes": ""
     },
     {
       "id": "df89e688-424d-43c5-aa84-3463fc2fd722",
       "name": "Report1",
-      "tasks": [
-        {
-          "type": "excel",
-          "id": "dc00642e-0120-4eab-949d-f936e6a08b88"
-        },
-        {
-          "type": "excel",
-          "id": "4c5cc34e-3416-4feb-a1fa-b40fff18ea01"
-        },
-        {
-          "type": "excel",
-          "id": "4457495e-d5cd-4595-8c70-765aeba10750"
-        }
-      ],
+      "tasks": [],
       "notes": ""
     },
     {

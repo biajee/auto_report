@@ -23,7 +23,7 @@ from tkinter import filedialog, messagebox, ttk
 from typing import List, Optional
 
 from capture import CaptureError, ExcelCapture
-from data_store import DataStore, Entry
+from data_store import DataStore, ExcelTask
 from ppt_export import PPTExportError, PPTExporter
 
 # ---------------------------------------------------------------------------
@@ -107,14 +107,14 @@ class DropdownItemDialog(tk.Toplevel):
 
 
 class EntryDialog(tk.Toplevel):
-    """Modal dialog for creating or editing an Entry."""
+    """Modal dialog for creating or editing an ExcelTask."""
 
-    def __init__(self, parent: tk.Tk, entry: Optional[Entry] = None) -> None:
+    def __init__(self, parent: tk.Tk, entry: Optional[ExcelTask] = None) -> None:
         super().__init__(parent)
-        self.result: Optional[Entry] = None
+        self.result: Optional[ExcelTask] = None
         self._entry = entry
 
-        self.title("Edit Entry" if entry else "Add Entry")
+        self.title("Edit Task" if entry else "Add Task")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
@@ -286,7 +286,7 @@ class EntryDialog(tk.Toplevel):
         frm.columnconfigure(1, weight=1)
         self._refresh_after_id: Optional[str] = None
 
-    def _populate(self, entry: Entry) -> None:
+    def _populate(self, entry: ExcelTask) -> None:
         self._name_var.set(entry.name)
         self._file_var.set(entry.file_path)
         self._range_var.set(entry.cell_range)
@@ -528,7 +528,7 @@ class EntryDialog(tk.Toplevel):
         dropdowns = self._get_dropdowns()
 
         if self._entry:
-            self.result = Entry(
+            self.result = ExcelTask(
                 id=self._entry.id,
                 name=name,
                 file_path=file_path,
@@ -546,7 +546,7 @@ class EntryDialog(tk.Toplevel):
                 pptx_height=pptx_height,
             )
         else:
-            e = Entry.create(name, file_path, sheet, cell_range, notes)
+            e = ExcelTask.create(name, file_path, sheet, cell_range, notes)
             e.dropdowns   = dropdowns
             e.pptx_file   = pptx_file
             e.pptx_slide  = pptx_slide
@@ -1438,8 +1438,8 @@ class MainApp(tk.Tk):
 
     def _refresh_tree(self, select_id: str = "") -> None:
         self._tree.delete(*self._tree.get_children())
-        entries = self._store.entries
-        for e in entries:
+        tasks = self._store.tasks
+        for e in tasks:
             self._tree.insert(
                 "",
                 "end",
@@ -1453,8 +1453,8 @@ class MainApp(tk.Tk):
                     e.display_capture_time(),
                 ),
             )
-        n = len(entries)
-        self._count_var.set(f"{n} entr{'y' if n == 1 else 'ies'}")
+        n = len(tasks)
+        self._count_var.set(f"{n} task{'s' if n != 1 else ''}")
         if select_id:
             try:
                 self._tree.selection_set(select_id)
@@ -1483,22 +1483,22 @@ class MainApp(tk.Tk):
         dlg = EntryDialog(self)
         self.wait_window(dlg)
         if dlg.result:
-            self._store.add(dlg.result)
+            self._store.add_task(dlg.result)
             self._refresh_tree(select_id=dlg.result.id)
             self._set_status(f"Added: {dlg.result.name}")
 
     def _edit(self) -> None:
         eid = self._selected_id()
         if not eid:
-            messagebox.showinfo("Edit", "Select an entry first.", parent=self)
+            messagebox.showinfo("Edit", "Select a task first.", parent=self)
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if not entry:
             return
         dlg = EntryDialog(self, entry=entry)
         self.wait_window(dlg)
         if dlg.result:
-            self._store.update(dlg.result)
+            self._store.update_task(dlg.result)
             self._refresh_tree(select_id=dlg.result.id)
             self._set_status(f"Updated: {dlg.result.name}")
 
@@ -1506,16 +1506,16 @@ class MainApp(tk.Tk):
         eid = self._selected_id()
         if not eid:
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if not entry:
             return
         if messagebox.askyesno(
             "Confirm Delete",
-            f"Delete entry '{entry.name}'?",
+            f"Delete task '{entry.name}'?",
             icon="warning",
             parent=self,
         ):
-            self._store.delete(eid)
+            self._store.delete_task(eid)
             self._refresh_tree()
             self._clear_preview()
             self._set_status(f"Deleted: {entry.name}")
@@ -1527,20 +1527,20 @@ class MainApp(tk.Tk):
     def _capture_selected(self) -> None:
         eid = self._selected_id()
         if not eid:
-            messagebox.showinfo("Capture", "Select an entry first.", parent=self)
+            messagebox.showinfo("Capture", "Select a task first.", parent=self)
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if entry:
             self._run_capture([entry])
 
     def _capture_all(self) -> None:
-        entries = self._store.entries
-        if not entries:
-            messagebox.showinfo("Capture All", "No entries saved yet.", parent=self)
+        tasks = self._store.tasks
+        if not tasks:
+            messagebox.showinfo("Capture All", "No tasks saved yet.", parent=self)
             return
-        self._run_capture(entries)
+        self._run_capture(tasks)
 
-    def _run_capture(self, entries: List[Entry]) -> None:
+    def _run_capture(self, entries: List[ExcelTask]) -> None:
         n = len(entries)
         self._set_status(f"Capturing {n} item{'s' if n > 1 else ''}…")
         self._set_action_btns(False)
@@ -1559,7 +1559,7 @@ class MainApp(tk.Tk):
                     )
                     e.last_capture_path = path
                     e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    self._store.update(e)
+                    self._store.update_task(e)
                     results.append((e, path, None))
                     dlg.log(f"✓  Done: {e.name}", "ok")
                 except CaptureError as exc:
@@ -1604,7 +1604,7 @@ class MainApp(tk.Tk):
         if not eid:
             self._clear_preview()
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if not entry:
             return
         self._update_info(entry)
@@ -1638,7 +1638,7 @@ class MainApp(tk.Tk):
         self._info.delete("1.0", "end")
         self._info.config(state="disabled")
 
-    def _update_info(self, entry: Entry) -> None:
+    def _update_info(self, entry: ExcelTask) -> None:
         self._info.config(state="normal")
         self._info.delete("1.0", "end")
         lines = [
@@ -1660,23 +1660,23 @@ class MainApp(tk.Tk):
     def _paste_selected(self) -> None:
         eid = self._selected_id()
         if not eid:
-            messagebox.showinfo("Paste to PPT", "Select an entry first.", parent=self)
+            messagebox.showinfo("Paste to PPT", "Select a task first.", parent=self)
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if not entry:
             return
         if not entry.has_ppt_dest():
             messagebox.showinfo(
                 "Paste to PPT",
                 f"'{entry.name}' has no PowerPoint destination.\n"
-                "Edit the entry to add one.",
+                "Edit the task to add one.",
                 parent=self,
             )
             return
         if not entry.last_capture_path or not Path(entry.last_capture_path).exists():
             if messagebox.askyesno(
                 "No Screenshot",
-                "No screenshot exists yet for this entry.\nCapture it first?",
+                "No screenshot exists yet for this task.\nCapture it first?",
                 parent=self,
             ):
                 self._run_capture_then_paste([entry])
@@ -1684,38 +1684,38 @@ class MainApp(tk.Tk):
         self._run_paste([entry])
 
     def _paste_all(self) -> None:
-        entries = [e for e in self._store.entries if e.has_ppt_dest()]
-        if not entries:
+        tasks = [e for e in self._store.tasks if e.has_ppt_dest()]
+        if not tasks:
             messagebox.showinfo(
                 "Paste All to PPT",
-                "No entries have a PowerPoint destination set.\n"
-                "Edit entries to add one.",
+                "No tasks have a PowerPoint destination set.\n"
+                "Edit tasks to add one.",
                 parent=self,
             )
             return
         missing = [
-            e for e in entries
+            e for e in tasks
             if not e.last_capture_path or not Path(e.last_capture_path).exists()
         ]
         if missing:
             names = "\n".join(f"  • {e.name}" for e in missing)
             if messagebox.askyesno(
                 "Missing Screenshots",
-                f"These entries have no screenshot yet:\n{names}\n\n"
+                f"These tasks have no screenshot yet:\n{names}\n\n"
                 "Capture all missing ones first, then paste?",
                 parent=self,
             ):
-                self._run_capture_then_paste(entries)
+                self._run_capture_then_paste(tasks)
                 return
-        self._run_paste(entries)
+        self._run_paste(tasks)
 
     def _run_all(self) -> None:
-        """Capture every entry, then paste those with a PPT destination."""
-        entries = self._store.entries
-        if not entries:
-            messagebox.showinfo("Run All", "No entries to process.", parent=self)
+        """Capture every task, then paste those with a PPT destination."""
+        tasks = self._store.tasks
+        if not tasks:
+            messagebox.showinfo("Run All", "No tasks to process.", parent=self)
             return
-        self._run_capture_then_paste(entries)
+        self._run_capture_then_paste(tasks)
 
     # ------------------------------------------------------------------
     # Background workers
@@ -1740,7 +1740,7 @@ class MainApp(tk.Tk):
                     )
                     e.last_capture_path = path
                     e.last_capture_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    self._store.update(e)
+                    self._store.update_task(e)
                     cap_results.append((e, path, None))
                     dlg.log(f"✓  Captured: {e.name}", "ok")
                 except CaptureError as exc:
@@ -1881,11 +1881,11 @@ class MainApp(tk.Tk):
         eid = self._selected_id()
         if not eid:
             return
-        entry = self._store.get(eid)
+        entry = self._store.get_task(eid)
         if entry and entry.last_capture_path and Path(entry.last_capture_path).exists():
             subprocess.Popen(["explorer", str(Path(entry.last_capture_path).resolve())])
         else:
-            messagebox.showinfo("Open", "No screenshot available for this entry.", parent=self)
+            messagebox.showinfo("Open", "No screenshot available for this task.", parent=self)
 
     def _show_ctx(self, event: tk.Event) -> None:
         iid = self._tree.identify_row(event.y)

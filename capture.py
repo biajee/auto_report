@@ -76,6 +76,47 @@ class ExcelCapture:
         return str(out_path), buf
 
     @staticmethod
+    def get_range_size(file_path: str, sheet_name: str, cell_range: str) -> Tuple[float, float]:
+        """Return (width_pts, height_pts) of the cell range in Excel points.
+
+        Uses the Excel COM API so dimensions match the actual on-screen render.
+        Raises CaptureError on failure.
+        """
+        try:
+            import win32com.client  # noqa: PLC0415
+        except ImportError:
+            raise CaptureError("pywin32 is not installed. Run: pip install pywin32")
+
+        path = str(Path(file_path).resolve())
+        if not Path(path).exists():
+            raise CaptureError(f"File not found: {file_path}")
+
+        xl = win32com.client.DispatchEx("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        try:
+            wb = xl.Workbooks.Open(path, ReadOnly=True)
+            try:
+                ws = wb.Worksheets(sheet_name)
+            except Exception:
+                raise CaptureError(f"Sheet '{sheet_name}' not found.")
+            try:
+                rng = ws.Range(cell_range.upper())
+                w = float(rng.Width)
+                h = float(rng.Height)
+            except CaptureError:
+                raise
+            except Exception:
+                raise CaptureError(f"Invalid range: '{cell_range}'")
+            wb.Close(False)
+            return w, h
+        finally:
+            try:
+                xl.Quit()
+            except Exception:
+                pass
+
+    @staticmethod
     def get_sheet_names(file_path: str) -> List[str]:
         """Return sheet names from an Excel workbook (openpyxl first, COM fallback)."""
         path = str(Path(file_path).resolve())
